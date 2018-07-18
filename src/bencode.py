@@ -10,7 +10,7 @@ def parse_string_length(s, i=''):
         i += c
         c = s.read(1)
     # c should be ':' here
-    if c == ':':
+    if c == b':':
         return int(i)
     else:
         raise Exception("String length should be terminated by ':'")
@@ -19,13 +19,13 @@ def parse_string(s, n):
     return s.read(n)
 
 def parse_int(s):
-    i = ''
+    i = b''
     c = s.read(1)
     while c.isdigit():
         i += c
         c = s.read(1)
     # c should be 'e' here
-    if c == 'e':
+    if c == b'e':
         return int(i)
     else:
         raise Exception("Integer not terminated by 'e'")
@@ -60,19 +60,19 @@ def parse_value(s):
     if c.isdigit():
         length = parse_string_length(s, c)
         return parse_string(s, length) 
-    elif c == 'i':
+    elif c == b'i':
         return parse_int(s)
-    elif c == 'l':
+    elif c == b'l':
         return parse_list(s)
-    elif c == 'd':
+    elif c == b'd':
         return parse_dict(s)
-    elif c == 'e' or c == '':
+    elif c == b'e' or c == '':
         None
     else:
         raise Exception("Expected a digit, 'i', 'l', or 'd'. Got {}".format(c))
 
-def parse(s):
-    stream = io.StringIO(s)
-    return parse_value(stream)
+#def parse(s):
+#    stream = io.StringIO(s)
+#    return parse_value(stream)
 
-print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
+#print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
