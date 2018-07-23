@@ -1,6 +1,7 @@
 # encode and decode the Bittorrent serialization format
 # http://www.bittorrent.org/beps/bep_0003.html
 
+import collections
 import io
 
 def parse_string_length(s, i=''):
@@ -40,7 +41,7 @@ def parse_list(s):
             l.append(v)
 
 def parse_dict(s):
-    d = dict()
+    d = collections.OrderedDict()
     while True:
         k = parse_value(s)
         if k is None:
@@ -76,3 +77,47 @@ def parse_value(s):
 #    return parse_value(stream)
 
 #print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
+
+#def extract_info(s):
+#    c = s.read(1)
+#    if c != b'd':
+#        raise Exception("Need a dictionary to get 'info' string")
+#    d = dict()
+#    while True:
+#        k = parse_value(s)
+#        if k == b'info':
+#            return parse_value(s)
+#        else:
+#            _ = parse_value(s)
+#    raise Exception("No 'info' key found")
+
+def encode_bytes(s):
+    return b'%d:%s' % (len(s), s)
+
+def encode_string(s):
+    return encode_bytes(s.encode())
+
+def encode_int(i):
+    return b'i%de' % i
+
+def encode_list(l):
+    inner = b''.join(encode_value(v) for v in l)
+    return b'l%se' % inner
+
+def encode_dict(d):
+    inner = b''.join(encode_value(k) + encode_value(v) for k,v in d.items())
+    return b'd%se' % inner
+
+def encode_value(v):
+    if isinstance(v, bytes):
+        return encode_bytes(v)
+    elif isinstance(v, str):
+        return encode_string(v)
+    elif isinstance(v, int):
+        return encode_int(v)
+    elif isinstance(v, list):
+        return encode_list(v)
+    elif isinstance(v, dict):
+        return encode_dict(v)
+    else:
+        raise Exception('Unsupported type for bencoding: "{}"'.format(type(v)))
