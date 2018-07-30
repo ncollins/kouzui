@@ -1,6 +1,8 @@
+import h11
 import trio
 
 import config
+import http_stream
 
 def _int2bytes(i):
     return b'%d' % i
@@ -22,22 +24,18 @@ def tracker_request(torrent):
     }
     params = b'&'.join([k + b'=' + v for k, v in d.items()])
     path = b'/' + torrent.tracker_path + b'?' + params
-
-    request_lines = [
-        [ b'GET', path ],
-        [ b'Host:', torrent.tracker_url]
-    ]
-    request = b'\n'.join(k + b' ' + v for k,v in request_lines)
-    return request
+    r = h11.Request(method="GET", target=path, headers=[("Host", torrent.tracker_url)])
+    return r
 
 async def query_tracker(torrent):
     stream = await trio.open_tcp_stream('localhost',8181)
-    await stream.send_all(tracker_request(torrent))
-    finished = False
-    while not finished:
-        reply = await stream.receive_some(1000)
-        finished = True
-    return reply
+    h = http_stream.Http_stream(stream, h11.CLIENT)
+
+    await h.send_event(tracker_request(torrent))
+    await h.send_event(h11.EndOfMessage())
+
+    response, data = await h.receive_with_data()
+    return data
 
 
 async def download_torrent(torrent):
