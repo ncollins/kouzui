@@ -4,8 +4,9 @@ import h11
 import trio
 
 import bencode
-import config
 import http_stream
+
+from config import LISTENING_PORT
 
 def _int2bytes(i):
     return b'%d' % i
@@ -19,7 +20,7 @@ def tracker_request(torrent):
         b'info_hash': torrent.info_hash,
         b'peer_id': torrent.peer_id,
         # ip
-        b'port': _int2bytes(config.listening_port),
+        b'port': _int2bytes(LISTENING_PORT),
         b'uploaded': _int2bytes(torrent.uploaded),
         b'downloaded': _int2bytes(torrent.downloaded),
         b'left': _int2bytes(torrent.left),
@@ -31,7 +32,7 @@ def tracker_request(torrent):
     r = h11.Request(method="GET", target=path, headers=[("Host", torrent.tracker_url)])
     return r
 
-async def query_tracker(torrent):
+async def query(torrent):
     #tracker_url = b'localhost:8181'
     tracker_url = torrent.tracker_url
     print(tracker_url)
@@ -49,14 +50,3 @@ async def query_tracker(torrent):
 
     response, data = await h.receive_with_data()
     return b''.join(d.data for d in data)
-
-
-async def download_torrent(torrent):
-    tracker_info = await query_tracker(torrent)
-    print(tracker_info)
-    print()
-    try:
-        print(bencode.parse_value(io.BytesIO(tracker_info)))
-    except:
-        print('Could not parse response.')
-

@@ -128,7 +128,7 @@ def parse_compact_peers(raw_bytes):
     else:
         peers = []
         for i in range(len(raw_bytes) // 6):
-            ip = '.'.join(str(i) for i in raw_bytes[i:i+4])
+            ip = '.'.join(str(i) for i in raw_bytes[i:i+4]).encode()
             port = int.from_bytes(raw_bytes[i+4:i+6], byteorder='big')
             peers.append((ip, port))
         return peers

@@ -1,1 +1,3 @@
-listening_port = 6881
+LISTENING_PORT = 6881
+
+STREAM_CHUNK_SIZE = 1024
