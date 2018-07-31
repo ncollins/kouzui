@@ -3,7 +3,7 @@ import argparse
 import os
 
 import bencode
-import networking
+import engine
 from torrent import Torrent
 
 def main():
@@ -26,8 +26,7 @@ def main():
     t = Torrent(torrent_data, torrent_info, current_directory)
     #print(t.piece_info(1))
     #print(t.tracker_url)
-    networking.run(t)
-
+    engine.run(t)
 
 if __name__ == '__main__':
     main()

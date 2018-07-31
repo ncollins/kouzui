@@ -60,5 +60,3 @@ async def download_torrent(torrent):
     except:
         print('Could not parse response.')
 
-def run(torrent):
-    trio.run(download_torrent, torrent)
