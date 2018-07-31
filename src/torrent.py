@@ -1,6 +1,12 @@
+import collections
+import datetime
 import hashlib
+import itertools
 import os
 import random
+
+import bitarray
+
 # Key information in torrent dictionary, d:
 #
 # d['announce'] -> the url of the tracker
@@ -17,6 +23,11 @@ import random
 # OR 
 # d['info']['files'] -> if multiple files, a list of dictionaries with 
 # 'length' and 'path' keys
+
+
+Peer = collections.namedtuple('Peer', ['ip', 'port', 'id', 'pieces', 'last_active'])
+
+Piece = collections.namedtuple('Piece', [ 'filename', 'index', 'sha1hash']) 
 
 def _random_char():
     # ASCII ranges
@@ -72,16 +83,20 @@ class Torrent(object):
                 self._filename = os.path.join(directory, custom_name)
             else:
                 self._filename = os.path.join(directory, self._torrent_name)
-            self._pieces = [ (self._filename, i, sha1, False) 
-                             for i, sha1 in enumerate(_parse_pieces(tdict[b'info'][b'pieces']))]
+
+            self._complete = set()
+            self._incomplete = set(Piece(self._filename, i, sha1) 
+                                   for i, sha1 
+                                   in enumerate(_parse_pieces(tdict[b'info'][b'pieces'])))
+
             self._file_length = int(tdict[b'info'][b'length'])
             self._left = self._file_length
 
         # info not from .torrent file
-        self.peer_list = []
-        self.interval = 100
-        self.complete = 0
-        self.incomplete = 0
+        self._peers = {}
+        self._interval = 100
+        self._complete_peers = 0
+        self._incomplete_peers = 0
 
     @property
     def info_hash(self):
@@ -119,3 +134,30 @@ class Torrent(object):
     def piece_info(self, n):
         return self._pieces[n]
 
+    def add_peer(self, peer_id, ip, port):
+        pieces = bitarray.bitarray(self._file_length * 8)
+        pieces.setall(False)
+        # TODO this is crappy as peers collected from tracker at same time
+        # will have different last_active
+        self._peers[(ip, port)] = Peer(peer_id, ip, port, pieces, datetime.datetime.now())
+
+    def next_pieces(self, n):
+        '''
+        Find n pieces that we still need, and appropriate peers to download from.
+
+        Returns a dictionary of the form dict[piece] = set(peer)
+        '''
+        # choose a few peices to target
+        # TODO better randomness
+        pieces = list(itertools.takewhile(lambda x: x[0] < n, enumerate(self._incomplete)))
+        # find peers with that piece
+        p_dict = {}
+
+        for piece in pieces:
+            matching_peers = set()
+            for (_, peer) in self._peers.items():
+                if peer.pieces[piece.index]:
+                    matching_peers.add(peer)
+            p_dict[piece] = matching_pieces
+
+        return p_dict
