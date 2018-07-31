@@ -121,3 +121,14 @@ def encode_value(v):
         return encode_dict(v)
     else:
         raise Exception('Unsupported type for bencoding: "{}"'.format(type(v)))
+
+def parse_compact_peers(raw_bytes):
+    if (len(raw_bytes) % 6) != 0:
+        raise Exception('Peer list length is not a multiple of 6.')
+    else:
+        peers = []
+        for i in range(len(raw_bytes) // 6):
+            ip = '.'.join(str(i) for i in raw_bytes[i:i+4])
+            port = int.from_bytes(raw_bytes[i+4:i+6], byteorder='big')
+            peers.append((ip, port))
+        return peers

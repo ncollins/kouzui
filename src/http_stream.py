@@ -8,10 +8,10 @@ class Http_stream(object):
     async def receive_event(self):
         while True:
             e = self.conn.next_event()
-            #print('recieved event = "{}"'.format(str(e)))
+            print('recieved event = "{}"'.format(str(e)))
             if e == h11.NEED_DATA:
                 raw_bytes = await self.stream.receive_some(20)
-                #print('raw bytes = "{}"'.format(str(raw_bytes)))
+                print('raw bytes = "{}"'.format(str(raw_bytes)))
                 self.conn.receive_data(raw_bytes)
             else:
                 return e
@@ -28,7 +28,7 @@ class Http_stream(object):
     async def send_event(self, e):
         raw_bytes = self.conn.send(e)
         await self.stream.send_all(raw_bytes)
-        #print("sent {} as {}".format(str(e), str(raw_bytes)))
+        print("sent {} as {}".format(str(e), str(raw_bytes)))
 
     async def close(self):
         await self.stream.aclose()

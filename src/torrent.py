@@ -77,6 +77,12 @@ class Torrent(object):
             self._file_length = int(tdict[b'info'][b'length'])
             self._left = self._file_length
 
+        # info not from .torrent file
+        self.peer_list = []
+        self.interval = 100
+        self.complete = 0
+        self.incomplete = 0
+
     @property
     def info_hash(self):
         return self._info_hash
@@ -97,15 +103,18 @@ class Torrent(object):
 
     @property
     def uploaded(self):
+        # TODO this needs to update while we run
         return 0
 
     @property
     def downloaded(self):
+        # TODO this needs to update while we run
         return 0
 
     @property
     def left(self):
-        return 0
+        # TODO this needs to update while we run
+        return self._file_length
 
     def piece_info(self, n):
         return self._pieces[n]
