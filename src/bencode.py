@@ -4,7 +4,7 @@
 import collections
 import io
 
-def parse_string_length(s, i=''):
+def parse_string_length(s : io.BytesIO, i : bytes = b''):
     # Take string from the front and return the rest
     c = s.read(1)
     while c.isdigit():
@@ -16,10 +16,10 @@ def parse_string_length(s, i=''):
     else:
         raise Exception("String length should be terminated by ':'")
 
-def parse_string(s, n):
+def parse_string(s : io.BytesIO, n : int):
     return s.read(n)
 
-def parse_int(s):
+def parse_int(s : io.BytesIO):
     i = b''
     c = s.read(1)
     while c.isdigit():
@@ -31,8 +31,8 @@ def parse_int(s):
     else:
         raise Exception("Integer not terminated by 'e'")
 
-def parse_list(s):
-    l = []
+def parse_list(s : io.BytesIO):
+    l : list = []
     while True:
         v = parse_value(s)
         if v is None:
@@ -40,8 +40,8 @@ def parse_list(s):
         else:
             l.append(v)
 
-def parse_dict(s):
-    d = collections.OrderedDict()
+def parse_dict(s : io.BytesIO):
+    d : dict = collections.OrderedDict()
     while True:
         k = parse_value(s)
         if k is None:
@@ -50,7 +50,7 @@ def parse_dict(s):
             v = parse_value(s)
             d[k] = v
 
-def parse_value(s):
+def parse_value(s : io.BytesIO ):
     # `s` is a string stream object
     # look at first character
     # digit -> string
