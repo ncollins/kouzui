@@ -4,6 +4,8 @@
 import collections
 import io
 
+import config
+
 def parse_string_length(s : io.BytesIO, i : bytes = b''):
     # Take string from the front and return the rest
     c = s.read(1)
@@ -132,3 +134,16 @@ def parse_compact_peers(raw_bytes):
             port = int.from_bytes(raw_bytes[i+4:i+6], byteorder='big')
             peers.append((ip, port))
         return peers
+
+def replace_with_localhost(pair):
+    if pair[0] == b'::1':
+        return (b'localhost', pair[1])
+    else:
+        return pair
+
+def parse_peers(data):
+    try:
+        peer_list = parse_compact_peers(data)
+    except:
+        peer_list = [(x[b'ip'], x[b'port']) for x in data]
+    return [ replace_with_localhost(pair) for pair in peer_list if pair[1] != config.LISTENING_PORT ]

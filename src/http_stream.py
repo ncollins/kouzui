@@ -6,15 +6,21 @@ class Http_stream(object):
     def __init__(self, stream, role):
         self.stream = stream
         self.conn = h11.Connection(our_role=role)
+        print('h11 connection {}'.format(self.conn))
+        print('our role = {}'.format(self.conn.our_role))
+        print('their role = {}'.format(self.conn.their_role))
 
     async def receive_event(self):
         while True:
+            print('about to get h11 event...')
             e = self.conn.next_event()
-            print('recieved event = "{}"'.format(str(e)))
+            print('h11 event = "{}"'.format(str(e)))
             if e == h11.NEED_DATA:
                 raw_bytes = await self.stream.receive_some(STREAM_CHUNK_SIZE)
                 print('raw bytes = "{}"'.format(str(raw_bytes)))
+                #if raw_bytes != b'':
                 self.conn.receive_data(raw_bytes)
+                print('sent data to h11 connection')
             else:
                 return e
 

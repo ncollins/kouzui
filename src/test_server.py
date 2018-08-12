@@ -18,6 +18,8 @@ async def handler(stream):
     # - EndOfMessage
     # - ConnectionClosed
 
+    print('Stream being handled. Connected to {}'.format(stream.socket.getpeername()))
+
     request, data = await h.receive_with_data()
 
     response = h11.Response(status_code=200,reason=b'OK', headers=[])
@@ -28,9 +30,13 @@ async def handler(stream):
     await h.send_event(h11.EndOfMessage())
     await h.close()
 
-async def run_server():
-    print("Start server")
-    await trio.serve_tcp(handler, 8181)
+async def run_server(port):
+    print("Start server on port {}".format(port))
+    await trio.serve_tcp(handler, port)
 
+async def run_servers():
+    async with trio.open_nursery() as nursery:
+        nursery.start_soon(run_server, 8181)
+        nursery.start_soon(run_server, 8182)
 
-trio.run(run_server)
+trio.run(run_servers)

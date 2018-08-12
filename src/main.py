@@ -12,8 +12,10 @@ def main():
     argparser.add_argument('torrent_path', help='path to the .torrent file')
     args = argparser.parse_args()
     with open(args.torrent_path, 'rb') as f:
-        torrent_data = bencode.parse_value(f)
+        torrent_data : dict = bencode.parse_value(f)
+        print('torrent_data = {}'.format(torrent_data))
     torrent_info = bencode.encode_value(torrent_data[b'info'])
+    print('torrent info = {}'.format(torrent_info))
     if True:
         with open(args.torrent_path, 'rb') as f:
             raw = f.read()
