@@ -50,9 +50,6 @@ def tracker_request(torrent, event) -> h11.Request:
 async def query(torrent, event) -> bytes:
     url = torrent.tracker_address
     port = torrent.tracker_port
-    #url: bytes = b'localhost'
-    #url = b'localhost'
-    #port = 8081
     stream = await trio.open_tcp_stream(url, port)
     print('Opened raw stream')
     h = http_stream.Http_stream(stream, h11.CLIENT)

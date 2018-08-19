@@ -10,8 +10,6 @@ import peer
 import torrent as state
 import tracker
 
-from config import LISTENING_PORT
-
 
 class Engine(object):
     def __init__(self, torrent: state.Torrent) -> None:
@@ -59,7 +57,7 @@ class Engine(object):
             new = False
 
     async def peer_server(self):
-        await trio.serve_tcp(peer.make_handler(self), LISTENING_PORT)
+        await trio.serve_tcp(peer.make_handler(self), self._state.listening_port)
 
     async def peer_clients(self):
         '''

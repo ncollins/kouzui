@@ -10,6 +10,8 @@ from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
 import bitarray
 import trio
 
+from config import LISTENING_PORT
+
 # Key information in torrent dictionary, d:
 #
 # d['announce'] -> the url of the tracker
@@ -108,7 +110,8 @@ class Torrent(object):
     messages into a trio.Queue, which can be used in a blocking or non-blocking
     fashion.
     """
-    def __init__(self, tdict, info_string, directory, custom_name=None):
+    def __init__(self, tdict, info_string, directory, listening_port=None, custom_name=None):
+        self._listening_port = listening_port
         self._info_string = info_string
         #print(info_string)
         self._info_hash = hashlib.sha1(info_string).digest()
@@ -147,6 +150,7 @@ class Torrent(object):
         self._tracker_address = m['address'].encode()
         self._tracker_port = int(m['port'])
         self._tracker_path = m['path'].encode()
+        print('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
 
         # info not from .torrent file
         self._peers: Dict[Peer, PeerState] = {}
@@ -161,6 +165,13 @@ class Torrent(object):
         #self._complete_pieces_queue: trio.Queue[Tuple[int,bytes]] = trio.Queue()
         #self._incoming_request_queue: trio.Queue[Tuple[int,int,int]] = trio.Queue()
         #self._requests_from_peers_for_file_blocks: trio.Queue[Tuple[int,int,int]] = trio.Queue()
+
+    @property
+    def listening_port(self):
+        if self._listening_port:
+            return self._listening_port
+        else:
+            return LISTENING_PORT
 
     @property
     def file_path(self):
@@ -198,7 +209,6 @@ class Torrent(object):
         #without_protocol = without_port.replace(b'http://',b'')
         #return without_protocol
         return self._tracker_address
-
 
     @property
     def tracker_port(self) -> int:

@@ -10,6 +10,7 @@ def main():
     current_directory = os.path.dirname(os.path.abspath(__file__))
     argparser = argparse.ArgumentParser()
     argparser.add_argument('torrent_path', help='path to the .torrent file')
+    argparser.add_argument('--listening_port', help='path to the .torrent file')
     args = argparser.parse_args()
     with open(args.torrent_path, 'rb') as f:
         torrent_data : dict = bencode.parse_value(f)
@@ -25,7 +26,7 @@ def main():
     #print(torrent_data.keys())
     #print(torrent_data[b'info'].keys())
     #print(torrent_data[b'info'][b'name'])
-    t = Torrent(torrent_data, torrent_info, current_directory)
+    t = Torrent(torrent_data, torrent_info, current_directory, int(args.listening_port))
     #print(t.piece_info(1))
     #print(t.tracker_url)
     engine.run(t)
