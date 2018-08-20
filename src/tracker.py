@@ -1,5 +1,5 @@
 import io
-import urllib
+from urllib import parse as urllib_parse # hack to fix mypy warning
 
 import h11
 import trio
@@ -18,7 +18,7 @@ def tracker_request(torrent, event) -> h11.Request:
     the tracker about your client.
     """
     d = { 
-        b'info_hash': urllib.parse.quote_from_bytes(torrent.info_hash).encode()
+        b'info_hash': urllib_parse.quote_from_bytes(torrent.info_hash).encode()
         , b'peer_id': torrent.peer_id
         # ip
         , b'port': _int2bytes(LISTENING_PORT)
