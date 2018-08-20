@@ -85,6 +85,7 @@ class PeerStream(object):
             if data != b'':
                 print('Got peer data: {}'.format(data))
             self._msg_data += data
+            print('self._msg_data = {}'.format(self._msg_data))
             # 1) see if we have enough to get message length, if not continue
             if msg_length is None and len(self._msg_data) < 4:
                 continue
@@ -104,7 +105,7 @@ class PeerStream(object):
         await self._stream.send_all(data)
 
     async def send_handshake(self, info_hash, peer_id):
-        handshake_data =  b'19BitTorrent protocol' + (b'\0' * 8) + info_hash + peer_id
+        handshake_data =  b'\x13BitTorrent protocol' + (b'\0' * 8) + info_hash + peer_id
         print('Sending handshake')
         print('Outgoing handshake = {}'.format(handshake_data))
         print('Length of outgoing handshake {}'.format(len(handshake_data)))
@@ -142,13 +143,13 @@ class PeerEngine(object):
             print('Closing PeerEngine')
 
     def _is_handshake_good_ex(self, length: int, data: bytes) -> bool:
-        if len(data) < 21 + 8 + 20 + 20:
+        if len(data) < 20 + 8 + 20 + 20:
             raise Exception('Handshake data: wrong length')
-        header = data[:21]
-        _reserved_bytes = data[21:21+8]
-        sha1hash = data[21+8:21+8+20]
-        peer_id = data[21+8+20:21+8+20+20]
-        if not (header == b'19BitTorrent protocol'):
+        header = data[:20]
+        _reserved_bytes = data[20:20+8]
+        sha1hash = data[20+8:20+8+20]
+        peer_id = data[20+8+20:20+8+20+20]
+        if not (header == b'\x13BitTorrent protocol'):
             raise Exception('Handshake data: wrong header')
         if not (sha1hash == self._tstate.info_hash):
             raise Exception('Handshake data: wrong hash')
@@ -159,8 +160,8 @@ class PeerEngine(object):
         # First, receive handshake
         data = await self._peer_stream.receive_handshake()
         print('Handshake data = {}'.format(data))
-
         self._is_handshake_good_ex(len(data), data)
+        print('Handshake OK')
         # Then receive stream of messages
         while True:
             (length, data) = await self._peer_stream.receive_message()
@@ -173,26 +174,34 @@ class PeerEngine(object):
                 msg_type = data[0]
                 msg_payload = data[1:]
                 if msg_type == PeerMsg.CHOKE:
+                    print('Got CHOKE')
                     pass
                 elif msg_type == PeerMsg.UNCHOKE:
-                    pass
+                    print('Got UNCHOKE')
                 elif msg_type == PeerMsg.INTERESTED:
+                    print('Got INTERESTED')
                     pass
                 elif msg_type == PeerMsg.NOT_INTERESTED:
+                    print('Got NOT_INTERESTED')
                     pass
                 elif msg_type == PeerMsg.HAVE:
+                    print('Got HAVE')
                     index: int = parse_have(msg_payload)
                     #self._peer_stream.pieces[index] = True
                 elif msg_type == PeerMsg.BITFIELD:
+                    print('Got BITFIELD')
                     bitfield = parse_bitfield(msg_payload)
                     #self._peer_state.set_pieces(bitfield)
                 elif msg_type == PeerMsg.REQUEST:
+                    print('Got REQUEST')
                     reqest_info = parse_request_or_cancel(msg_payload)
                     #self._peer_state.add_request(request_info)
                 elif msg_type == PeerMsg.PIECE:
+                    print('Got PIECE')
                     (index, begin, data) = parse_piece(msg_payload)
                     #self._torrent.add_piece(index, begin, data)
                 elif msg_type == PeerMsg.CANCEL:
+                    print('Got CANCEL')
                     request_info = parse_request_or_cancel(msg_payload)
                     #self._peer_state.cancel_request(request_info)
                 else:
