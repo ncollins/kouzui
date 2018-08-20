@@ -99,7 +99,7 @@ class PeerStream(object):
             if (msg_length is not None) and len(self._msg_data) >= msg_length:
                 msg = self._msg_data[:msg_length]
                 self._msg_data = self._msg_data[msg_length:]
-                print('receive_message: finished with msg_length = {} and first char = {}'.format(msg_length, msg[0]))
+                print('receive_message: finished with msg_length = {}'.format(msg_length))
                 return (msg_length, msg)
 
     async def send_message(self, msg: bytes) -> None:
