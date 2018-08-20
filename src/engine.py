@@ -1,5 +1,7 @@
 import datetime
+import hashlib
 import io
+import random
 from typing import List, Dict, Tuple
 
 import bitarray
@@ -24,6 +26,8 @@ class Engine(object):
         # queues for sending TO peers are initialized on a per-peer basis
         #self._queues_for_peers: Dict[state.Peer,trio.Queue] = dict()
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
+        # data received but not written to disk
+        self._received_blocks: Dict[int, List[Tuple[int,bytes]]] = {}
 
     @property
     def msg_from_peer(self) -> trio.Queue:
@@ -31,9 +35,10 @@ class Engine(object):
 
     async def run(self):
         async with trio.open_nursery() as nursery:
-            nursery.start_soon(self.peer_clients)
-            nursery.start_soon(self.peer_server)
+            nursery.start_soon(self.peer_clients_loop)
+            nursery.start_soon(self.peer_server_loop)
             nursery.start_soon(self.tracker_loop)
+            nursery.start_soon(self.peer_messages_loop)
 
     async def tracker_loop(self):
         new = True
@@ -56,10 +61,10 @@ class Engine(object):
             await trio.sleep_until(start_time + self._state.interval)
             new = False
 
-    async def peer_server(self):
+    async def peer_server_loop(self):
         await trio.serve_tcp(peer.make_handler(self), self._state.listening_port)
 
-    async def peer_clients(self):
+    async def peer_clients_loop(self):
         '''
         Start up clients for new peers that are not from the serve.
         '''
@@ -92,6 +97,88 @@ class Engine(object):
             return peer_state
         else:
             assert(False)
+
+    def _blocks_from_index(self, index):
+        piece_length = self._state.piece_length
+        block_length = min(piece_length, 1024 * 8)
+        begin_indexes = list(range(0, piece_length, block_length))
+        return [ (index, begin, min(block_length, piece_length-begin))
+                for begin in begin_indexes ]
+
+    async def update_peer_requests(self):
+        # Look at what the client has, what the peers have
+        # and update the requested pieces for each peer.
+        for peer_state in self._peers.values():
+            # TODO don't read private field of another object
+            targets = (~self._state._complete) & peer_state._pieces
+            indexes = [i for i, b in enumerate(targets) if b]
+            random.shuffle(indexes)
+            if indexes:
+                blocks_to_request = self._blocks_from_index(indexes[0])
+                print('Blocks to request: {}'.format(blocks_to_request))
+                await peer_state.to_send_queue.put(("blocks_to_request", blocks_to_request))
+
+    async def handle_peer_message(self, peer_state, msg_type, msg_payload):
+        if msg_type == peer.PeerMsg.CHOKE:
+            print('Got CHOKE') # TODO
+        elif msg_type == peer.PeerMsg.UNCHOKE:
+            print('Got UNCHOKE') # TODO
+        elif msg_type == peer.PeerMsg.INTERESTED:
+            print('Got INTERESTED') # TODO
+        elif msg_type == peer.PeerMsg.NOT_INTERESTED:
+            print('Got NOT_INTERESTED') # TODO
+        elif msg_type == peer.PeerMsg.HAVE:
+            print('Got HAVE')
+            index: int = peer.parse_have(msg_payload)
+            peer_state.get_pieces()[index] = True
+        elif msg_type == peer.PeerMsg.BITFIELD:
+            print('Got BITFIELD')
+            bitfield = peer.parse_bitfield(msg_payload)
+            peer_state.set_pieces(bitfield)
+        elif msg_type == peer.PeerMsg.REQUEST:
+            print('Got REQUEST') # TODO
+            reqest_info = peer.parse_request_or_cancel(msg_payload)
+            #self._peer_state.add_request(request_info)
+        elif msg_type == peer.peer.PeerMsg.PIECE:
+            print('Got PIECE')
+            (index, begin, data) = peer.parse_piece(msg_payload)
+            self.handle_block_received(index, begin, data)
+            #self._torrent.add_piece(index, begin, data)
+        elif msg_type == peer.PeerMsg.CANCEL:
+            print('Got CANCEL') # TODO
+            request_info = peer.parse_request_or_cancel(msg_payload)
+            #self._peer_state.cancel_request(request_info)
+        else:
+            # TODO - Exceptions are bad here!
+            print('Bad message: length = {}'.format(length))
+            print('Bad message: data = {}'.format(data))
+            raise Exception('bad peer message')
+
+    async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
+        if index not in self._received_blocks:
+            self._received_blocks[index] = []
+        blocks = self._received_blocks[index]
+        blocks.append((begin, data))
+        piece_data = b''
+        for offset, block_data in blocks:
+            if offset == len(piece_data):
+                piece_data = piece_data + block_data
+            else:
+                break
+        piece_info = self._state.piece_info(index)
+        if len(piece_data) == self._state._piece_length:
+            if hashlib.sha1(piece_data).digest() == piece_info.sha1:
+                await self._complete_pieces_to_write.put((index, piece_data))
+                self._received_blocks.pop(index)
+            else:
+                raise Exception('sha1hash does not match for index {}'.format(index))
+
+    async def peer_messages_loop(self):
+        peer_state, msg_type, msg_payload = await self._msg_from_peer.get() 
+        #
+        print('Engine: recieved peer message')
+        await self.handle_peer_message(peer_state, msg_type, msg_payload)
+        await self.update_peer_requests()
 
 
 #async def main_loop(torrent):

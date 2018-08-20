@@ -26,7 +26,8 @@ def main():
     #print(torrent_data.keys())
     #print(torrent_data[b'info'].keys())
     #print(torrent_data[b'info'][b'name'])
-    t = Torrent(torrent_data, torrent_info, current_directory, int(args.listening_port))
+    port = int(args.listening_port) if args.listening_port else None
+    t = Torrent(torrent_data, torrent_info, current_directory, port)
     #print(t.piece_info(1))
     #print(t.tracker_url)
     engine.run(t)

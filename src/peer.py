@@ -124,8 +124,9 @@ class PeerEngine(object):
     '''
     PeerEngine is initialized with a stream and two queues.
     '''
-    def __init__(self, tstate, peer_state, stream, recieved_queue, to_send_queue):
+    def __init__(self, tstate, peer_address, peer_state, stream, recieved_queue, to_send_queue):
         self._tstate = tstate
+        self._peer_address = peer_address
         self._peer_state = peer_state
         self._peer_stream = PeerStream(stream)
         self._received_queue = recieved_queue
@@ -190,53 +191,27 @@ class PeerEngine(object):
             else:
                 msg_type = data[0]
                 msg_payload = data[1:]
-                if msg_type == PeerMsg.CHOKE:
-                    print('Got CHOKE')
-                    pass
-                elif msg_type == PeerMsg.UNCHOKE:
-                    print('Got UNCHOKE')
-                elif msg_type == PeerMsg.INTERESTED:
-                    print('Got INTERESTED')
-                    pass
-                elif msg_type == PeerMsg.NOT_INTERESTED:
-                    print('Got NOT_INTERESTED')
-                    pass
-                elif msg_type == PeerMsg.HAVE:
-                    print('Got HAVE')
-                    index: int = parse_have(msg_payload)
-                    #self._peer_stream.pieces[index] = True
-                elif msg_type == PeerMsg.BITFIELD:
-                    print('Got BITFIELD')
-                    bitfield = parse_bitfield(msg_payload)
-                    #self._peer_state.set_pieces(bitfield)
-                elif msg_type == PeerMsg.REQUEST:
-                    print('Got REQUEST')
-                    reqest_info = parse_request_or_cancel(msg_payload)
-                    #self._peer_state.add_request(request_info)
-                elif msg_type == PeerMsg.PIECE:
-                    print('Got PIECE')
-                    (index, begin, data) = parse_piece(msg_payload)
-                    #self._torrent.add_piece(index, begin, data)
-                elif msg_type == PeerMsg.CANCEL:
-                    print('Got CANCEL')
-                    request_info = parse_request_or_cancel(msg_payload)
-                    #self._peer_state.cancel_request(request_info)
-                else:
-                    # TODO - Exceptions are bad here!
-                    print('Bad message: length = {}'.format(length))
-                    print('Bad message: data = {}'.format(data))
-                    raise Exception('bad peer message')
+                print('Putting message in queue for engine')
+                await self._received_queue.put((self._peer_state, msg_type, msg_payload))
 
     async def sending_loop(self):
         while True:
-            to_send = await self._to_send_queue.get()
+            command, data = await self._to_send_queue.get()
+            if command == 'blocks_to_request':
+                for index, begin, length in data:
+                    raw_msg = bytes([PeerMsg.REQUEST])
+                    raw_msg += (index).to_bytes(4, byteorder='big')
+                    raw_msg += (begin).to_bytes(4, byteorder='big')
+                    raw_msg += (length).to_bytes(4, byteorder='big')
+                    await self._peer_stream.send_message(raw_msg)
 
 
-async def start_peer_engine(engine, peer_state, stream, initiate=True):
+
+async def start_peer_engine(engine, peer_address, peer_state, stream, initiate=True):
     '''
     Find (or create) queues for relevant stream, and create PeerEngine.
     '''
-    peer_engine = PeerEngine(engine._state, peer_state, stream, engine.msg_from_peer, peer_state.to_send_queue)
+    peer_engine = PeerEngine(engine._state, peer_address, peer_state, stream, engine.msg_from_peer, peer_state.to_send_queue)
     await peer_engine.run(initiate=True)
 
 
@@ -251,7 +226,7 @@ def make_handler(engine):
         await start_peer_engine(engine, peer_state, stream, initiate=False)
     return handler
 
-async def make_standalone(engine, peer, peer_state):
-    print('Starting outgoing peer connection to {}'.format(peer))
-    stream = await trio.open_tcp_stream(peer.ip, peer.port)
-    await start_peer_engine(engine, peer_state, stream, initiate=True)
+async def make_standalone(engine, peer_address, peer_state):
+    print('Starting outgoing peer connection to {}'.format(peer_address))
+    stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
+    await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)

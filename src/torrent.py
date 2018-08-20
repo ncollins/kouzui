@@ -165,8 +165,6 @@ class Torrent(object):
         self._interval = 100
         self._complete_peers = 0
         self._incomplete_peers = 0
-        # data received but not written to disk
-        self._received_blocks: Dict[int, List[Tuple[int,bytes]]] = {}
         # ------------------------------------------
         # Queues are used for outbound communication
         # ------------------------------------------
@@ -267,29 +265,3 @@ class Torrent(object):
             return self._peers[peer]
         else:
             return self.create_peer_state(peer)
-
-    def pieces_to_request(self, peer: PeerAddress, n=10) -> List[int]:
-        peer_state = self._peers[peer]
-        targets = (~self._complete) & peer_state._pieces
-        indexes = [i for i, b in enumerate(targets) if b]
-        random.shuffle(indexes)
-        return indexes[:n]
-
-    #def add_data(self, index: int, begin: int, data: bytes) -> None:
-    #    if index not in self._received_blocks:
-    #        self._received_blocks[index] = []
-    #    blocks = self._received_blocks[index]
-    #    blocks.append((begin, data))
-    #    piece_data = b''
-    #    for offset, block_data in blocks:
-    #        if offset == len(piece_data):
-    #            piece_data = piece_data + block_data
-    #        else:
-    #            break
-    #    piece_info = self._pieces[index]
-    #    if len(piece_data) == self._piece_length:
-    #        if hashlib.sha1(piece_data).digest() == piece_info.sha1:
-    #            self._complete_pieces_queue.put_nowait((index, piece_data))
-    #            self._received_blocks.pop(index)
-    #        else:
-    #            raise Exception('sha1hash does not match for index {}'.format(index))
