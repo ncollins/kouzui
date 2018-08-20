@@ -240,16 +240,6 @@ async def start_peer_engine(engine, peer_state, stream, initiate=True):
     await peer_engine.run(initiate=True)
 
 
-#async def torrent_handler(torrent, stream):
-#    peer_info = stream.socket.getpeername()
-#    ip: string = peer_info[0]
-#    port: int = peer_info[1]
-#    peer = tstate.Peer(ip, port)
-#    peer_state = torrent.get_or_add_peer(peer)
-#    #
-#    #peer_stream = PeerStream(stream)
-#    peer_engine = Peer
-
 def make_handler(engine):
     async def handler(stream):
         peer_info = stream.socket.getpeername()
