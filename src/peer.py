@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Any, Tuple, Optional
 
 import bitarray
@@ -19,16 +19,16 @@ class PeerType(Enum):
     SERVER = 0
     CLIENT = 1
 
-class PeerMsg(Enum):
-    CHOKE = b'0'
-    UNCHOKE = b'1'
-    INTERESTED = b'2'
-    NOT_INTERESTED = b'3'
-    HAVE = b'4'
-    BITFIELD = b'5'
-    REQUEST = b'6'
-    PIECE = b'7'
-    CANCEL = b'8'
+class PeerMsg(IntEnum):
+    CHOKE          = 0
+    UNCHOKE        = 1
+    INTERESTED     = 2
+    NOT_INTERESTED = 3
+    HAVE           = 4
+    BITFIELD       = 5
+    REQUEST        = 6
+    PIECE          = 7
+    CANCEL         = 8
 
 def parse_have(s: bytes) -> int:
     return int(s)
@@ -69,12 +69,12 @@ class PeerStream(object):
         # send keep-alives at least every 2 mins
 
     async def receive_handshake(self):
-        while len(self._msg_data) < 69:
+        while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             print('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
             self._msg_data += data
-        handshake_data = self._msg_data[:69]
-        self._msg_data = self._msg_data[69:]
+        handshake_data = self._msg_data[:68]
+        self._msg_data = self._msg_data[68:]
         print('Final incoming handshake data {}'.format(data))
         return handshake_data
 
@@ -83,20 +83,23 @@ class PeerStream(object):
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data != b'':
-                print('Got peer data: {}'.format(data))
+                print('received_message: Got peer data: {}'.format(data))
             self._msg_data += data
-            print('self._msg_data = {}'.format(self._msg_data))
+            print('received_message: self._msg_data = {}'.format(self._msg_data))
             # 1) see if we have enough to get message length, if not continue
             if msg_length is None and len(self._msg_data) < 4:
+                print('receive_message: not enough data to determine length')
                 continue
             # 2) get message length if we don't yet have it
             if msg_length is None:
                 msg_length = int.from_bytes(self._msg_data[:4], byteorder='big')
                 self._msg_data = self._msg_data[4:]
+                print('receive_message: msg_length = {}'.format(msg_length))
             # 3) get data if possible
             if (msg_length is not None) and len(self._msg_data) >= msg_length:
                 msg = self._msg_data[:msg_length]
                 self._msg_data = self._msg_data[msg_length:]
+                print('receive_message: finished with msg_length = {} and first char = {}'.format(msg_length, msg[0]))
                 return (msg_length, msg)
 
     async def send_message(self, msg: bytes) -> None:
@@ -121,8 +124,9 @@ class PeerEngine(object):
     '''
     PeerEngine is initialized with a stream and two queues.
     '''
-    def __init__(self, tstate, stream, recieved_queue, to_send_queue):
+    def __init__(self, tstate, peer_state, stream, recieved_queue, to_send_queue):
         self._tstate = tstate
+        self._peer_state = peer_state
         self._peer_stream = PeerStream(stream)
         self._received_queue = recieved_queue
         self._to_send_queue = to_send_queue
@@ -133,8 +137,15 @@ class PeerEngine(object):
         #peer = tstate.Peer(ip, port)
         #self._peer_state = torrent.get_or_add_peer(peer)
 
-    async def run(self):
+    async def run(self, initiate=True):
         try:
+            # Do handshakes before starting main loops
+            if initiate == True:
+                await self.send_handshake()
+                await self.receive_handshake()
+            else:
+                await self.receive_handshake()
+                await self.send_handshake()
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
@@ -142,7 +153,11 @@ class PeerEngine(object):
             raise e
             print('Closing PeerEngine')
 
-    def _is_handshake_good_ex(self, length: int, data: bytes) -> bool:
+    async def receive_handshake(self):
+        # First, receive handshake
+        data = await self._peer_stream.receive_handshake()
+        print('Handshake data = {}'.format(data))
+        # Second, validation
         if len(data) < 20 + 8 + 20 + 20:
             raise Exception('Handshake data: wrong length')
         header = data[:20]
@@ -153,16 +168,18 @@ class PeerEngine(object):
             raise Exception('Handshake data: wrong header')
         if not (sha1hash == self._tstate.info_hash):
             raise Exception('Handshake data: wrong hash')
-        # TODO check peer_id too
-        return True
+        if self._peer_state.peer_id:
+            if not self._peer_state.peer_id == peer_id:
+                raise Exception('Handshake data: peer_id does not match')
+        else:
+            self._peer_state.set_peer_id(peer_id)
+        print('Handshake OK')
+
+    async def send_handshake(self):
+        # Handshake
+        await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
 
     async def receiving_loop(self):
-        # First, receive handshake
-        data = await self._peer_stream.receive_handshake()
-        print('Handshake data = {}'.format(data))
-        self._is_handshake_good_ex(len(data), data)
-        print('Handshake OK')
-        # Then receive stream of messages
         while True:
             (length, data) = await self._peer_stream.receive_message()
             print('Received message of length {}'.format(length))
@@ -206,21 +223,21 @@ class PeerEngine(object):
                     #self._peer_state.cancel_request(request_info)
                 else:
                     # TODO - Exceptions are bad here!
+                    print('Bad message: length = {}'.format(length))
+                    print('Bad message: data = {}'.format(data))
                     raise Exception('bad peer message')
 
     async def sending_loop(self):
-        # Handshake
-        await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
         while True:
             to_send = await self._to_send_queue.get()
 
 
-async def start_peer_engine(engine, peer_state, stream):
+async def start_peer_engine(engine, peer_state, stream, initiate=True):
     '''
     Find (or create) queues for relevant stream, and create PeerEngine.
     '''
-    peer_engine = PeerEngine(engine._state, stream, engine.msg_from_peer, peer_state.to_send_queue)
-    await peer_engine.run()
+    peer_engine = PeerEngine(engine._state, peer_state, stream, engine.msg_from_peer, peer_state.to_send_queue)
+    await peer_engine.run(initiate=True)
 
 
 #async def torrent_handler(torrent, stream):
@@ -241,10 +258,10 @@ def make_handler(engine):
         peer = tstate.Peer(ip, port)
         print('Received incoming peer connection from {}'.format(peer))
         peer_state = await engine.get_or_add_peer(peer, PeerType.SERVER)
-        await start_peer_engine(engine, peer_state, stream)
+        await start_peer_engine(engine, peer_state, stream, initiate=False)
     return handler
 
 async def make_standalone(engine, peer, peer_state):
     print('Starting outgoing peer connection to {}'.format(peer))
     stream = await trio.open_tcp_stream(peer.ip, peer.port)
-    await start_peer_engine(engine, peer_state, stream)
+    await start_peer_engine(engine, peer_state, stream, initiate=True)

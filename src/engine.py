@@ -23,7 +23,7 @@ class Engine(object):
         self._msg_from_peer            = trio.Queue(100) # TODO remove magic number
         # queues for sending TO peers are initialized on a per-peer basis
         #self._queues_for_peers: Dict[state.Peer,trio.Queue] = dict()
-        self._peers: Dict[state.Peer, state.PeerState] = dict()
+        self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
 
     @property
     def msg_from_peer(self) -> trio.Queue:
@@ -45,7 +45,7 @@ class Engine(object):
             # update peers
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers']) 
-            peers = [state.Peer(ip, port) for ip, port in peer_ips_and_ports]
+            peers = [state.PeerAddress(ip, port) for ip, port, _ in peer_ips_and_ports]
             print('Found peers: {}'.format(peers))
             await self.update_peers(peers)
             # update other info: 
@@ -69,26 +69,26 @@ class Engine(object):
                 (peer_id, peer_state) = await self._peers_without_connection.get()
                 nursery.start_soon(peer.make_standalone, self, peer_id, peer_state)
 
-    async def update_peers(self, peers: List[state.Peer]) -> None:
+    async def update_peers(self, peers: List[state.PeerAddress]) -> None:
         for p in peers:
             await self.get_or_add_peer(p, peer.PeerType.CLIENT)
 
-    async def get_or_add_peer(self, peer_id: state.Peer, peer_type=peer.PeerType) -> state.PeerState:
+    async def get_or_add_peer(self, address: state.PeerAddress, peer_type=peer.PeerType, peer_id=None) -> state.PeerState:
         # 1. get or create PeerState
-        if peer_id in self._peers:
-            return self._peers[peer_id]
+        if address in self._peers:
+            return self._peers[address]
         else:
             now = datetime.datetime.now()
             pieces = bitarray.bitarray(self._state._num_pieces)
             pieces.setall(False)
-            peer_state = state.PeerState(pieces, now)
-            self._peers[peer_id] = peer_state
+            peer_state = state.PeerState(pieces, now, peer_id=peer_id)
+            self._peers[address] = peer_state
         # 2. start connection if needed
         # If server, then connection already exists
         if peer_type == peer.PeerType.SERVER:
             return peer_state
         elif peer_type == peer.PeerType.CLIENT:
-            await self._peers_without_connection.put((peer_id, peer_state))
+            await self._peers_without_connection.put((address, peer_state))
             return peer_state
         else:
             assert(False)

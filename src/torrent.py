@@ -30,14 +30,15 @@ from config import LISTENING_PORT
 # 'length' and 'path' keys
 
 
-Peer = NamedTuple('Peer', [('ip', bytes), ('port', int)])
+PeerAddress = NamedTuple('PeerAddress', [('ip', bytes), ('port', int)])
 
 
 class PeerState(object):
-    def __init__(self, pieces: bitarray.bitarray, first_seen: datetime.datetime) -> None:
+    def __init__(self, pieces: bitarray.bitarray, first_seen: datetime.datetime, peer_id = None) -> None:
         self._pieces = pieces
         self._first_seen = first_seen
         self._last_seen = first_seen
+        self._peer_id = peer_id
         self._requested: Set[Tuple[int,int,int]] = set()
         self._to_send_queue = trio.Queue(100) # TODO remove magic number
 
@@ -63,6 +64,13 @@ class PeerState(object):
     @property
     def last_seen(self):
         return self._last_seen
+
+    @property
+    def peer_id(self):
+        return self._peer_id
+
+    def set_peer_id(self, peer_id):
+        self._peer_id = peer_id
 
     @property
     def to_send_queue(self) -> trio.Queue:
@@ -153,7 +161,7 @@ class Torrent(object):
         print('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
 
         # info not from .torrent file
-        self._peers: Dict[Peer, PeerState] = {}
+        self._peers: Dict[PeerAddress, PeerState] = {}
         self._interval = 100
         self._complete_peers = 0
         self._incomplete_peers = 0
@@ -244,7 +252,7 @@ class Torrent(object):
     def is_piece_complete(self, index):
         return self._complete[index]
 
-    def create_peer_state(self, peer: Peer) -> PeerState:
+    def create_peer_state(self, peer: PeerAddress) -> PeerState:
         pieces = bitarray.bitarray(self._num_pieces)
         pieces.setall(False)
         # TODO this is crappy as peers collected from tracker at same time
@@ -254,13 +262,13 @@ class Torrent(object):
         self._peers[peer] = peer_state
         return peer_state
 
-    def get_or_add_peer(self, peer: Peer) -> PeerState:
+    def get_or_add_peer(self, peer: PeerAddress) -> PeerState:
         if peer in self._peers:
             return self._peers[peer]
         else:
             return self.create_peer_state(peer)
 
-    def pieces_to_request(self, peer: Peer, n=10) -> List[int]:
+    def pieces_to_request(self, peer: PeerAddress, n=10) -> List[int]:
         peer_state = self._peers[peer]
         targets = (~self._complete) & peer_state._pieces
         indexes = [i for i, b in enumerate(targets) if b]

@@ -135,15 +135,18 @@ def parse_compact_peers(raw_bytes):
             peers.append((ip, port))
         return peers
 
-def replace_with_localhost(pair):
-    if pair[0] == b'::1':
-        return (b'localhost', pair[1])
+def replace_with_localhost(tripple):
+    if tripple[0] == b'::1':
+        return (b'localhost', tripple[1], tripple[2])
     else:
-        return pair
+        return tripple
 
 def parse_peers(data):
+    # TODO this try/except logic probably shouldn't be here as it's not really
+    # a bencode issue
     try:
         peer_list = parse_compact_peers(data)
+        peer_list = [(ip, port, None) for ip, port in peer_list]
     except:
-        peer_list = [(x[b'ip'], x[b'port']) for x in data]
-    return [ replace_with_localhost(pair) for pair in peer_list if pair[1] != config.LISTENING_PORT ]
+        peer_list = [(x[b'ip'], x[b'port'], x[b'peer id']) for x in data]
+    return [ replace_with_localhost(tripple) for tripple in peer_list if tripple[1] != config.LISTENING_PORT ]
