@@ -156,8 +156,6 @@ class Engine(object):
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
         for address, peer_state in self._peers.items():
-            if len(peer_state._requested) > 10:
-                continue
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
             indexes = [i for i, b in enumerate(targets) if b]
