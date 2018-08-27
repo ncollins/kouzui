@@ -256,17 +256,6 @@ class Engine(object):
         raise Exception('not implemented')
 
 
-#async def main_loop(torrent):
-#    raw_tracker_info = await tracker.query(torrent)
-#    tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
-#    # TODO we could recieve peers in a different format
-#    peers = bencode.parse_compact_peers(tracker_info[b'peers']) 
-#    logger.debug(tracker_info)
-#    logger.debug(peers)
-#    for ip, port in peers:
-#        peer = tstate.Peer(ip, port)
-#        torrent.add_peer(peer)
-
 def run(torrent):
     try:
         engine = Engine(torrent)
