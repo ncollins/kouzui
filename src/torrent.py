@@ -105,7 +105,7 @@ def _parse_pieces(bstring: bytes) -> List[bytes]:
     else:
         l: List[bytes] = []
         i = 0
-        while i + 20 < len(bstring):
+        while i + 20 <= len(bstring):
             l.append(bstring[i:i+20])
             i += 20
         return l
@@ -194,9 +194,12 @@ class Torrent(object):
     def complete_pieces_queue(self):
         return self._complete_pieces_queue
 
-    @property
-    def piece_length(self):
-        return self._piece_length
+    def piece_length(self, index: int) -> int:
+        last_piece = self._num_pieces - 1
+        if index < last_piece:
+            return self._piece_length
+        else:
+            return min(self._piece_length, self._file_length - self._piece_length * last_piece)
 
     @property
     def info_hash(self):
@@ -247,7 +250,7 @@ class Torrent(object):
         # TODO this needs to update while we run
         return self._file_length
 
-    def piece_info(self, n):
+    def piece_info(self, n: int) -> Piece:
         return self._pieces[n]
 
     def is_piece_complete(self, index):

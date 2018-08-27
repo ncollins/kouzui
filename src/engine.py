@@ -24,14 +24,20 @@ class RequestManager(object):
     def __init__(self):
         self._requests: Set[Tuple[state.PeerAddress,Tuple[int,int,int]]] = set()
 
+    @property
+    def size(self):
+        return len(self._requests)
+
     def add_request(self, peer_address: state.PeerAddress, block: Tuple[int,int,int]):
         self._requests.add((peer_address, block))
 
     def delete_all_for_piece(self, index: int):
-        self._requests = set(r for r in self._requests if not r[1][0] == index)
+        to_delete = set((a, r) for a, r in self._requests if r[0] == index)
+        logger.info('Found {} block requests to delete for piece index {}'.format(len(to_delete),index))
+        self._requests = set((a, r) for a, r in self._requests if not r[0] == index)
 
     def delete_all_for_peer(self, peer_address: state.PeerAddress):
-        self._requests = set(r for r in self._requests if not r[0] == peer_address)
+        self._requests = set((a, r) for a, r in self._requests if not a == peer_address)
 
     #def number_outstanding_for_peer(self, peer_address: state.PeerAddress):
     #    return len([r for a, r in self._requests if a == peer_address])
@@ -138,8 +144,9 @@ class Engine(object):
             assert(False)
 
     def _blocks_from_index(self, index):
-        piece_length = self._state.piece_length
+        piece_length = self._state.piece_length(index)
         block_length = min(piece_length, 1024 * 8)
+        #block_length = min(piece_length, 1024 * 16)
         begin_indexes = list(range(0, piece_length, block_length))
         return set((index, begin, min(block_length, piece_length-begin))
                 for begin in begin_indexes)
@@ -209,6 +216,7 @@ class Engine(object):
             self._received_blocks[index] = []
         blocks = self._received_blocks[index]
         blocks.append((begin, data))
+        blocks.sort()
         piece_data = b''
         for offset, block_data in blocks:
             if offset == len(piece_data):
@@ -216,8 +224,8 @@ class Engine(object):
             else:
                 break
         piece_info = self._state.piece_info(index)
-        if len(piece_data) == self._state._piece_length:
-            if hashlib.sha1(piece_data).digest() == piece_info.sha1:
+        if len(piece_data) == self._state.piece_length(index):
+            if hashlib.sha1(piece_data).digest() == piece_info.sha1hash:
                 await self._complete_pieces_to_write.put((index, piece_data))
                 self._received_blocks.pop(index)
             else:
@@ -235,6 +243,15 @@ class Engine(object):
         while True:
             index = await self._write_confirmations.get()
             self.requests.delete_all_for_piece(index)
+            self._state._complete[index] = True # TODO remove private property access
+            logger.info('Have {} pieces of {}, with {} blocks outstanding'.format(sum(self._state._complete), len(self._state._complete), self.requests.size))
+            if self._state._num_pieces - 3 < sum(self._state._complete) < self._state._num_pieces:
+                print('Final blocks missing: {}'.format(self.requests._requests))
+                unwritten_blocks = [(i,b, len(data))
+                        for i, blocks in self._received_blocks.items()
+                        for b, data in blocks
+                        ]
+                print('Unwritten blocks: {}'.format(unwritten_blocks))
 
     async def file_reading_loop(self):
         raise Exception('not implemented')

@@ -10,7 +10,7 @@ def _create_empty_file(path, size_in_bytes):
 class FileManager(object):
     def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue) -> None:
         self._torrent = torrent
-        _create_empty_file(self._torrent.file_path, self._torrent._num_pieces * self._torrent.piece_length) # TODO don't read private property 
+        _create_empty_file(self._torrent.file_path, self._torrent._file_length) # TODO don't read private property
         self._raw_file = open(self._torrent.file_path, 'rb+')
         self._file = trio.wrap_file(self._raw_file)
         self._pieces_to_write = pieces_to_write
@@ -34,12 +34,12 @@ class FileManager(object):
         raise Exception('not implemented')
 
     async def write_piece(self, index: int, piece: bytes) -> None:
-        start = index * self._torrent.piece_length
+        start = index * self._torrent._piece_length # TODO
         await self._file.seek(start)
         await self._file.write(piece)
         await self._file.flush()
 
     async def read_block(self, index: int, begin: int, length: int) -> bytes:
-        start = index * self._torrent.piece_length + begin
+        start = index * self._torrent.piece_length(index) + begin
         await self._file.seek(start)
         return await self._file.read(length)
