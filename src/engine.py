@@ -148,7 +148,6 @@ class Engine(object):
     def _blocks_from_index(self, index):
         piece_length = self._state.piece_length(index)
         block_length = min(piece_length, config.BLOCK_SIZE)
-        #block_length = min(piece_length, 1024 * 16)
         begin_indexes = list(range(0, piece_length, block_length))
         return set((index, begin, min(block_length, piece_length-begin))
                 for begin in begin_indexes)
