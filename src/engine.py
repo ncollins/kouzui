@@ -205,7 +205,7 @@ class Engine(object):
             request_info = peer.parse_request_or_cancel(msg_payload)
             #self._peer_state.cancel_request(request_info)
         else:
-            # TODO - Exceptions are bad here!
+            # TODO - Exceptions are bad here! Should this be assert false?
             logger.debug('Bad message: length = {}'.format(length))
             logger.debug('Bad message: data = {}'.format(data))
             raise Exception('bad peer message')
@@ -228,6 +228,7 @@ class Engine(object):
                 await self._complete_pieces_to_write.put((index, piece_data))
                 self._received_blocks.pop(index)
             else:
+                # TODO: throw away data and log info rather than raising Exception
                 raise Exception('sha1hash does not match for index {}'.format(index))
 
     async def peer_messages_loop(self):
@@ -243,6 +244,7 @@ class Engine(object):
             index = await self._write_confirmations.get()
             self.requests.delete_all_for_piece(index)
             self._state._complete[index] = True # TODO remove private property access
+            # TODO - send "HAVE" message
             logger.info('Have {} pieces of {}, with {} blocks outstanding'.format(sum(self._state._complete), len(self._state._complete), self.requests.size))
             if self._state._num_pieces - 3 < sum(self._state._complete) < self._state._num_pieces:
                 print('Final blocks missing: {}'.format(self.requests._requests))
