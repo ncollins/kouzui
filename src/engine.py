@@ -14,6 +14,8 @@ import peer
 import torrent as state
 import tracker
 
+import config
+
 logger = logging.getLogger('engine')
 
 class RequestManager(object):
@@ -50,14 +52,14 @@ class Engine(object):
     def __init__(self, torrent: state.Torrent) -> None:
         self._state = torrent
         # interact with self
-        self._peers_without_connection = trio.Queue(100)
+        self._peers_without_connection = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
-        self._complete_pieces_to_write = trio.Queue(100) # TODO remove magic number
-        self._write_confirmations      = trio.Queue(100) # TODO remove magic number
-        self._blocks_to_read           = trio.Queue(100)
-        self._blocks_for_peers         = trio.Queue(100)
+        self._complete_pieces_to_write = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._write_confirmations      = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._blocks_to_read           = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._blocks_for_peers         = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # interact with peer connections 
-        self._msg_from_peer            = trio.Queue(100) # TODO remove magic number
+        self._msg_from_peer            = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         #self._queues_for_peers: Dict[state.Peer,trio.Queue] = dict()
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
@@ -145,7 +147,7 @@ class Engine(object):
 
     def _blocks_from_index(self, index):
         piece_length = self._state.piece_length(index)
-        block_length = min(piece_length, 1024 * 8)
+        block_length = min(piece_length, config.BLOCK_SIZE)
         #block_length = min(piece_length, 1024 * 16)
         begin_indexes = list(range(0, piece_length, block_length))
         return set((index, begin, min(block_length, piece_length-begin))
