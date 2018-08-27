@@ -164,7 +164,7 @@ class Engine(object):
             random.shuffle(indexes)
             if indexes:
                 existing_requests = self.requests.existing_requests_for_peer(address)
-                if len(existing_requests) > 10:
+                if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
                     logger.info('Not making new requests: # existing for peer <{}> = {}'.format(address, len(existing_requests)))
                     new_requests = set()
                 else:
