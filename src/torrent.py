@@ -2,6 +2,7 @@
 import datetime
 import hashlib
 import itertools
+import logging
 import os
 import random
 import re
@@ -11,6 +12,8 @@ import bitarray
 import trio
 
 from config import LISTENING_PORT
+
+logger = logging.getLogger('torrent')
 
 # Key information in torrent dictionary, d:
 #
@@ -158,7 +161,7 @@ class Torrent(object):
         self._tracker_address = m['address'].encode()
         self._tracker_port = int(m['port'])
         self._tracker_path = m['path'].encode()
-        print('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
+        logger.info('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
 
         # info not from .torrent file
         self._peers: Dict[PeerAddress, PeerState] = {}

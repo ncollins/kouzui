@@ -1,4 +1,5 @@
 import io
+import logging
 from urllib import parse as urllib_parse # hack to fix mypy warning
 
 import h11
@@ -8,6 +9,8 @@ import bencode
 import http_stream
 
 from config import LISTENING_PORT
+
+logger = logging.getLogger('tracker')
 
 def _int2bytes(i : int) -> bytes:
     return b'%d' % i
@@ -50,11 +53,11 @@ def tracker_request(torrent, event) -> h11.Request:
 async def query(torrent, event) -> bytes:
     url: bytes = torrent.tracker_address
     port: bytes = torrent.tracker_port
-    print('url/port = {}/{}'.format(url, port))
+    logger.debug('url/port = {}/{}'.format(url, port))
     stream = await trio.open_tcp_stream(url.decode("ascii"), port) # TODO fix hack with string/bytes issue
-    print('Opened raw stream')
+    logger.debug('Opened raw stream')
     h = http_stream.Http_stream(stream, h11.CLIENT)
-    print('Created Http_stream')
+    logger.debug('Created Http_stream')
 
     await h.send_event(tracker_request(torrent, event))
     await h.send_event(h11.EndOfMessage())

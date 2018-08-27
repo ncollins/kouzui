@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 import io
+import logging
 import random
 from typing import List, Dict, Tuple, Set
 
@@ -12,6 +13,8 @@ import file_manager
 import peer
 import torrent as state
 import tracker
+
+logger = logging.getLogger('engine')
 
 class RequestManager(object):
     '''
@@ -87,7 +90,7 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers']) 
             peers = [state.PeerAddress(ip, port) for ip, port, _ in peer_ips_and_ports]
-            print('Found peers: {}'.format(peers))
+            logger.debug('Found peers: {}'.format(peers))
             await self.update_peers(peers)
             # update other info: 
             #self._state.complete_peers = tracker_info['complete']
@@ -104,7 +107,7 @@ class Engine(object):
         '''
         Start up clients for new peers that are not from the serve.
         '''
-        print('Peer client loop!!!')
+        logger.debug('Peer client loop!!!')
         async with trio.open_nursery() as nursery:
             while True:
                 (peer_id, peer_state) = await self._peers_without_connection.get()
@@ -152,50 +155,53 @@ class Engine(object):
             indexes = [i for i, b in enumerate(targets) if b]
             random.shuffle(indexes)
             if indexes:
-                suggested_requests = self._blocks_from_index(indexes[0])
                 existing_requests = self.requests.existing_requests_for_peer(address)
-                new_requests = suggested_requests.difference(existing_requests)
-                
+                if len(existing_requests) > 10:
+                    logger.info('Not making new requests: # existing for peer <{}> = {}'.format(address, len(existing_requests)))
+                    new_requests = set()
+                else:
+                    suggested_requests = self._blocks_from_index(indexes[0])
+                    new_requests = suggested_requests.difference(existing_requests)
+                    logger.info('# suggested requests = {}, # existing for peer <{}> = {}'.format(len(suggested_requests), address, len(existing_requests)))
+                logger.info('Blocks to request: {}'.format(new_requests))
                 for r in new_requests:
                     self.requests.add_request(address, r)
-                #peer_state._requested.update(blocks_to_request)
-                print('Blocks to request: {}'.format(new_requests))
                 await peer_state.to_send_queue.put(("blocks_to_request", new_requests))
 
     async def handle_peer_message(self, peer_state, msg_type, msg_payload):
         if msg_type == peer.PeerMsg.CHOKE:
-            print('Got CHOKE') # TODO
+            logger.debug('Got CHOKE') # TODO
         elif msg_type == peer.PeerMsg.UNCHOKE:
-            print('Got UNCHOKE') # TODO
+            logger.debug('Got UNCHOKE') # TODO
         elif msg_type == peer.PeerMsg.INTERESTED:
-            print('Got INTERESTED') # TODO
+            logger.debug('Got INTERESTED') # TODO
         elif msg_type == peer.PeerMsg.NOT_INTERESTED:
-            print('Got NOT_INTERESTED') # TODO
+            logger.debug('Got NOT_INTERESTED') # TODO
         elif msg_type == peer.PeerMsg.HAVE:
-            print('Got HAVE')
+            logger.debug('Got HAVE')
             index: int = peer.parse_have(msg_payload)
             peer_state.get_pieces()[index] = True
         elif msg_type == peer.PeerMsg.BITFIELD:
-            print('Got BITFIELD')
+            logger.debug('Got BITFIELD')
             bitfield = peer.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
         elif msg_type == peer.PeerMsg.REQUEST:
-            print('Got REQUEST') # TODO
+            logger.debug('Got REQUEST') # TODO
             reqest_info = peer.parse_request_or_cancel(msg_payload)
             #self._peer_state.add_request(request_info)
         elif msg_type == peer.PeerMsg.PIECE:
-            print('Got PIECE')
             (index, begin, data) = peer.parse_piece(msg_payload)
-            self.handle_block_received(index, begin, data)
+            logger.info('Got PIECE: {}'.format((index, begin)))
+            await self.handle_block_received(index, begin, data)
             #self._torrent.add_piece(index, begin, data)
         elif msg_type == peer.PeerMsg.CANCEL:
-            print('Got CANCEL') # TODO
+            logger.debug('Got CANCEL') # TODO
             request_info = peer.parse_request_or_cancel(msg_payload)
             #self._peer_state.cancel_request(request_info)
         else:
             # TODO - Exceptions are bad here!
-            print('Bad message: length = {}'.format(length))
-            print('Bad message: data = {}'.format(data))
+            logger.debug('Bad message: length = {}'.format(length))
+            logger.debug('Bad message: data = {}'.format(data))
             raise Exception('bad peer message')
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
@@ -221,7 +227,7 @@ class Engine(object):
         while True:
             peer_state, msg_type, msg_payload = await self._msg_from_peer.get() 
             #
-            print('Engine: recieved peer message')
+            logger.debug('Engine: recieved peer message')
             await self.handle_peer_message(peer_state, msg_type, msg_payload)
             await self.update_peer_requests()
 
@@ -239,8 +245,8 @@ class Engine(object):
 #    tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
 #    # TODO we could recieve peers in a different format
 #    peers = bencode.parse_compact_peers(tracker_info[b'peers']) 
-#    print(tracker_info)
-#    print(peers)
+#    logger.debug(tracker_info)
+#    logger.debug(peers)
 #    for ip, port in peers:
 #        peer = tstate.Peer(ip, port)
 #        torrent.add_peer(peer)

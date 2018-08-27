@@ -1,4 +1,5 @@
 from enum import Enum, IntEnum
+import logging
 from typing import Any, Tuple, Optional
 
 import bitarray
@@ -7,6 +8,8 @@ import trio
 import torrent as tstate
 
 from config import STREAM_CHUNK_SIZE
+
+logger = logging.getLogger('peer')
 
 # peer listener and peer sender
 # one listener for all peers
@@ -71,11 +74,11 @@ class PeerStream(object):
     async def receive_handshake(self):
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
-            print('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
+            logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
             self._msg_data += data
         handshake_data = self._msg_data[:68]
         self._msg_data = self._msg_data[68:]
-        print('Final incoming handshake data {}'.format(data))
+        logger.debug('Final incoming handshake data {}'.format(data))
         return handshake_data
 
     async def receive_message(self) -> Tuple[int, bytes]:
@@ -83,7 +86,7 @@ class PeerStream(object):
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data != b'':
-                print('received_message: Got peer data, first 10 bytes: {}'.format(data[:10]))
+                logger.debug('received_message: Got peer data, first 10 bytes: {}'.format(data[:10]))
             self._msg_data += data
             # 1) see if we have enough to get message length, if not continue
             if msg_length is None and len(self._msg_data) < 4:
@@ -105,11 +108,11 @@ class PeerStream(object):
 
     async def send_handshake(self, info_hash, peer_id):
         handshake_data =  b'\x13BitTorrent protocol' + (b'\0' * 8) + info_hash + peer_id
-        print('Sending handshake')
-        print('Outgoing handshake = {}'.format(handshake_data))
-        print('Length of outgoing handshake {}'.format(len(handshake_data)))
+        logger.debug('Sending handshake')
+        logger.debug('Outgoing handshake = {}'.format(handshake_data))
+        logger.debug('Length of outgoing handshake {}'.format(len(handshake_data)))
         await self._stream.send_all(handshake_data)
-        print('Sent handshake')
+        logger.debug('Sent handshake')
 
     async def send_keepalive(self) -> None:
         data = (0).to_bytes(4, byteorder='big')
@@ -148,12 +151,12 @@ class PeerEngine(object):
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
             raise e
-            print('Closing PeerEngine')
+            logger.debug('Closing PeerEngine')
 
     async def receive_handshake(self):
         # First, receive handshake
         data = await self._peer_stream.receive_handshake()
-        print('Handshake data = {}'.format(data))
+        logger.debug('Handshake data = {}'.format(data))
         # Second, validation
         if len(data) < 20 + 8 + 20 + 20:
             raise Exception('Handshake data: wrong length')
@@ -170,7 +173,7 @@ class PeerEngine(object):
                 raise Exception('Handshake data: peer_id does not match')
         else:
             self._peer_state.set_peer_id(peer_id)
-        print('Handshake OK')
+        logger.debug('Handshake OK')
 
     async def send_handshake(self):
         # Handshake
@@ -179,7 +182,7 @@ class PeerEngine(object):
     async def receiving_loop(self):
         while True:
             (length, data) = await self._peer_stream.receive_message()
-            print('Received message of length {}'.format(length))
+            logger.debug('Received message of length {}'.format(length))
             #self._peer_stream.last_seen = datetime.datetime.now()
             if length == 0:
                 # keepalive message
@@ -187,7 +190,7 @@ class PeerEngine(object):
             else:
                 msg_type = data[0]
                 msg_payload = data[1:]
-                print('Putting message in queue for engine')
+                logger.debug('Putting message in queue for engine')
                 await self._received_queue.put((self._peer_state, msg_type, msg_payload))
 
     async def sending_loop(self):
@@ -217,12 +220,12 @@ def make_handler(engine):
         ip: string = peer_info[0]
         port: int = peer_info[1]
         peer = tstate.Peer(ip, port)
-        print('Received incoming peer connection from {}'.format(peer))
+        logger.debug('Received incoming peer connection from {}'.format(peer))
         peer_state = await engine.get_or_add_peer(peer, PeerType.SERVER)
         await start_peer_engine(engine, peer_state, stream, initiate=False)
     return handler
 
 async def make_standalone(engine, peer_address, peer_state):
-    print('Starting outgoing peer connection to {}'.format(peer_address))
+    logger.debug('Starting outgoing peer connection to {}'.format(peer_address))
     stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
     await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
