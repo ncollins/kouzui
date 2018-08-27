@@ -268,5 +268,9 @@ class Engine(object):
 #        torrent.add_peer(peer)
 
 def run(torrent):
-    engine = Engine(torrent)
-    trio.run(engine.run)
+    try:
+        engine = Engine(torrent)
+        trio.run(engine.run)
+    except KeyboardInterrupt:
+        print()
+        print('Shutting down without cleanup...')
