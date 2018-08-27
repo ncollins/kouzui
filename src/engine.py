@@ -2,15 +2,39 @@ import datetime
 import hashlib
 import io
 import random
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 
 import bitarray
 import trio
 
 import bencode
+import file_manager
 import peer
 import torrent as state
 import tracker
+
+class RequestManager(object):
+    '''
+    Keeps track of blocks client requested by index, peer_address
+    and block.
+    '''
+    def __init__(self):
+        self._requests: Set[Tuple[state.PeerAddress,Tuple[int,int,int]]] = set()
+
+    def add_request(self, peer_address: state.PeerAddress, block: Tuple[int,int,int]):
+        self._requests.add((peer_address, block))
+
+    def delete_all_for_piece(self, index: int):
+        self._requests = set(r for r in self._requests if not r[1][0] == index)
+
+    def delete_all_for_peer(self, peer_address: state.PeerAddress):
+        self._requests = set(r for r in self._requests if not r[0] == peer_address)
+
+    #def number_outstanding_for_peer(self, peer_address: state.PeerAddress):
+    #    return len([r for a, r in self._requests if a == peer_address])
+
+    def existing_requests_for_peer(self, peer_address: state.PeerAddress) -> Set[Tuple[int,int,int]]:
+        return set(r for a, r in self._requests if a == peer_address)
 
 
 class Engine(object):
@@ -20,7 +44,9 @@ class Engine(object):
         self._peers_without_connection = trio.Queue(100)
         # interact with FileManager
         self._complete_pieces_to_write = trio.Queue(100) # TODO remove magic number
-        self._write_confirmation       = trio.Queue(100) # TODO remove magic number
+        self._write_confirmations      = trio.Queue(100) # TODO remove magic number
+        self._blocks_to_read           = trio.Queue(100)
+        self._blocks_for_peers         = trio.Queue(100)
         # interact with peer connections 
         self._msg_from_peer            = trio.Queue(100) # TODO remove magic number
         # queues for sending TO peers are initialized on a per-peer basis
@@ -28,6 +54,13 @@ class Engine(object):
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: Dict[int, List[Tuple[int,bytes]]] = {}
+        self.requests = RequestManager()
+        self.file_manager = file_manager.FileManager(self._state
+                , self._complete_pieces_to_write
+                , self._write_confirmations
+                , self._blocks_to_read 
+                , self._blocks_for_peers
+                )
 
     @property
     def msg_from_peer(self) -> trio.Queue:
@@ -39,6 +72,9 @@ class Engine(object):
             nursery.start_soon(self.peer_server_loop)
             nursery.start_soon(self.tracker_loop)
             nursery.start_soon(self.peer_messages_loop)
+            nursery.start_soon(self.file_write_confirmation_loop)
+            nursery.start_soon(self.file_manager.run)
+            #nursery.start_soon(self.file_reading_loop)
 
     async def tracker_loop(self):
         new = True
@@ -102,21 +138,29 @@ class Engine(object):
         piece_length = self._state.piece_length
         block_length = min(piece_length, 1024 * 8)
         begin_indexes = list(range(0, piece_length, block_length))
-        return [ (index, begin, min(block_length, piece_length-begin))
-                for begin in begin_indexes ]
+        return set((index, begin, min(block_length, piece_length-begin))
+                for begin in begin_indexes)
 
     async def update_peer_requests(self):
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
-        for peer_state in self._peers.values():
+        for address, peer_state in self._peers.items():
+            if len(peer_state._requested) > 10:
+                continue
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
             indexes = [i for i, b in enumerate(targets) if b]
             random.shuffle(indexes)
             if indexes:
-                blocks_to_request = self._blocks_from_index(indexes[0])
-                print('Blocks to request: {}'.format(blocks_to_request))
-                await peer_state.to_send_queue.put(("blocks_to_request", blocks_to_request))
+                suggested_requests = self._blocks_from_index(indexes[0])
+                existing_requests = self.requests.existing_requests_for_peer(address)
+                new_requests = suggested_requests.difference(existing_requests)
+                
+                for r in new_requests:
+                    self.requests.add_request(address, r)
+                #peer_state._requested.update(blocks_to_request)
+                print('Blocks to request: {}'.format(new_requests))
+                await peer_state.to_send_queue.put(("blocks_to_request", new_requests))
 
     async def handle_peer_message(self, peer_state, msg_type, msg_payload):
         if msg_type == peer.PeerMsg.CHOKE:
@@ -139,7 +183,7 @@ class Engine(object):
             print('Got REQUEST') # TODO
             reqest_info = peer.parse_request_or_cancel(msg_payload)
             #self._peer_state.add_request(request_info)
-        elif msg_type == peer.peer.PeerMsg.PIECE:
+        elif msg_type == peer.PeerMsg.PIECE:
             print('Got PIECE')
             (index, begin, data) = peer.parse_piece(msg_payload)
             self.handle_block_received(index, begin, data)
@@ -174,11 +218,20 @@ class Engine(object):
                 raise Exception('sha1hash does not match for index {}'.format(index))
 
     async def peer_messages_loop(self):
-        peer_state, msg_type, msg_payload = await self._msg_from_peer.get() 
-        #
-        print('Engine: recieved peer message')
-        await self.handle_peer_message(peer_state, msg_type, msg_payload)
-        await self.update_peer_requests()
+        while True:
+            peer_state, msg_type, msg_payload = await self._msg_from_peer.get() 
+            #
+            print('Engine: recieved peer message')
+            await self.handle_peer_message(peer_state, msg_type, msg_payload)
+            await self.update_peer_requests()
+
+    async def file_write_confirmation_loop(self):
+        while True:
+            index = await self._write_confirmations.get()
+            self.requests.delete_all_for_piece(index)
+
+    async def file_reading_loop(self):
+        raise Exception('not implemented')
 
 
 #async def main_loop(torrent):

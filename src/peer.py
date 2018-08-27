@@ -48,8 +48,8 @@ def parse_request_or_cancel(s: bytes) -> Tuple[int,int,int]:
     return (index, begin, length)
 
 def parse_piece(s):
-    index = from_bytes(s[:4], byteorder='big')
-    begin = from_bytes(s[4:8], byteorder='big')
+    index = int.from_bytes(s[:4], byteorder='big')
+    begin = int.from_bytes(s[4:8], byteorder='big')
     data = s[8:]
     return (index, begin, data)
 
@@ -83,23 +83,19 @@ class PeerStream(object):
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data != b'':
-                print('received_message: Got peer data: {}'.format(data))
+                print('received_message: Got peer data, first 10 bytes: {}'.format(data[:10]))
             self._msg_data += data
-            print('received_message: self._msg_data = {}'.format(self._msg_data))
             # 1) see if we have enough to get message length, if not continue
             if msg_length is None and len(self._msg_data) < 4:
-                print('receive_message: not enough data to determine length')
                 continue
             # 2) get message length if we don't yet have it
             if msg_length is None:
                 msg_length = int.from_bytes(self._msg_data[:4], byteorder='big')
                 self._msg_data = self._msg_data[4:]
-                print('receive_message: msg_length = {}'.format(msg_length))
             # 3) get data if possible
             if (msg_length is not None) and len(self._msg_data) >= msg_length:
                 msg = self._msg_data[:msg_length]
                 self._msg_data = self._msg_data[msg_length:]
-                print('receive_message: finished with msg_length = {}'.format(msg_length))
                 return (msg_length, msg)
 
     async def send_message(self, msg: bytes) -> None:
