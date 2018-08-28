@@ -4,8 +4,6 @@
 import collections
 import io
 
-import config
-
 def parse_string_length(s : io.BytesIO, i : bytes = b''):
     # Take string from the front and return the rest
     c = s.read(1)
@@ -141,7 +139,7 @@ def replace_with_localhost(tripple):
     else:
         return tripple
 
-def parse_peers(data):
+def parse_peers(data, torrent):
     # TODO this try/except logic probably shouldn't be here as it's not really
     # a bencode issue
     try:
@@ -149,4 +147,4 @@ def parse_peers(data):
         peer_list = [(ip, port, None) for ip, port in peer_list]
     except:
         peer_list = [(x[b'ip'], x[b'port'], x[b'peer id']) for x in data]
-    return [ replace_with_localhost(tripple) for tripple in peer_list if tripple[1] != config.LISTENING_PORT ]
+    return [ replace_with_localhost(tripple) for tripple in peer_list if tripple[1] != torrent.listening_port ]

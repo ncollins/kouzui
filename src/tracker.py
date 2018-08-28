@@ -8,8 +8,6 @@ import trio
 import bencode
 import http_stream
 
-from config import LISTENING_PORT
-
 logger = logging.getLogger('tracker')
 
 def _int2bytes(i : int) -> bytes:
@@ -24,7 +22,7 @@ def tracker_request(torrent, event) -> h11.Request:
         b'info_hash': urllib_parse.quote_from_bytes(torrent.info_hash).encode()
         , b'peer_id': torrent.peer_id
         # ip
-        , b'port': _int2bytes(LISTENING_PORT)
+        , b'port': _int2bytes(torrent.listening_port)
         , b'uploaded': _int2bytes(torrent.uploaded)
         , b'downloaded': _int2bytes(torrent.downloaded)
         , b'left': _int2bytes(torrent.left)

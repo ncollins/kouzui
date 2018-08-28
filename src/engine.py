@@ -2,7 +2,7 @@ import datetime
 import hashlib
 import io
 import logging
-import random
+import random 
 from typing import List, Dict, Tuple, Set
 
 import bitarray
@@ -17,6 +17,16 @@ import tracker
 import config
 
 logger = logging.getLogger('engine')
+
+stats = { 'requests_in': 0
+        , 'blocks_out': 0
+        , 'requests_out': 0
+        , 'blocks_in': 0
+        }
+
+def incStats(field):
+    stats[field] += 1
+    logger.info('STATS {}'.format(stats))
 
 class RequestManager(object):
     '''
@@ -40,6 +50,9 @@ class RequestManager(object):
 
     def delete_all_for_peer(self, peer_address: state.PeerAddress):
         self._requests = set((a, r) for a, r in self._requests if not a == peer_address)
+
+    def delete_all(self):
+        self._requests = set()
 
     #def number_outstanding_for_peer(self, peer_address: state.PeerAddress):
     #    return len([r for a, r in self._requests if a == peer_address])
@@ -85,7 +98,7 @@ class Engine(object):
             nursery.start_soon(self.peer_messages_loop)
             nursery.start_soon(self.file_write_confirmation_loop)
             nursery.start_soon(self.file_manager.run)
-            #nursery.start_soon(self.file_reading_loop)
+            nursery.start_soon(self.file_reading_loop)
 
     async def tracker_loop(self):
         new = True
@@ -96,7 +109,7 @@ class Engine(object):
             tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
             # update peers
             # TODO we could recieve peers in a different format
-            peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers']) 
+            peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers'], self._state)
             peers = [state.PeerAddress(ip, port) for ip, port, _ in peer_ips_and_ports]
             logger.debug('Found peers: {}'.format(peers))
             await self.update_peers(peers)
@@ -155,11 +168,17 @@ class Engine(object):
     async def update_peer_requests(self):
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
+        logger.info('`update_peer_requests`')
+        if self._state._complete.all():
+            logger.info('Not making new requests, download is complete')
+            return
         for address, peer_state in self._peers.items():
+            logger.info('`update_peer_requests` address = {}'.format(address))
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
             indexes = [i for i, b in enumerate(targets) if b]
             random.shuffle(indexes)
+            logger.info('`update_peer_requests` indexes[:5] = {}, self any? {}, peer any? {}'.format(indexes, self._state._complete.any(), peer_state._pieces.any()))
             if indexes:
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
@@ -172,6 +191,7 @@ class Engine(object):
                 logger.info('Blocks to request: {}'.format(new_requests))
                 for r in new_requests:
                     self.requests.add_request(address, r)
+                incStats('requests_out')
                 await peer_state.to_send_queue.put(("blocks_to_request", new_requests))
 
     async def handle_peer_message(self, peer_state, msg_type, msg_payload):
@@ -192,12 +212,14 @@ class Engine(object):
             bitfield = peer.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
         elif msg_type == peer.PeerMsg.REQUEST:
-            logger.debug('Got REQUEST') # TODO
-            reqest_info = peer.parse_request_or_cancel(msg_payload)
-            #self._peer_state.add_request(request_info)
+            logger.info('Got REQUEST') # TODO
+            incStats('requests_in')
+            request_info: Tuple[int,int,int] = peer.parse_request_or_cancel(msg_payload)
+            await self._blocks_to_read.put((peer_state, request_info))
         elif msg_type == peer.PeerMsg.PIECE:
             (index, begin, data) = peer.parse_piece(msg_payload)
-            logger.info('Got PIECE: {}'.format((index, begin)))
+            incStats('blocks_in')
+            logger.info('Got PIECE: {}'.format((index, begin, len(data))))
             await self.handle_block_received(index, begin, data)
             #self._torrent.add_piece(index, begin, data)
         elif msg_type == peer.PeerMsg.CANCEL:
@@ -212,10 +234,10 @@ class Engine(object):
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
-            self._received_blocks[index] = []
-        blocks = self._received_blocks[index]
-        blocks.append((begin, data))
-        blocks.sort()
+            self._received_blocks[index] = set()
+        blocks_set = self._received_blocks[index]
+        blocks_set.add((begin, data))
+        blocks = sorted(blocks_set)
         piece_data = b''
         for offset, block_data in blocks:
             if offset == len(piece_data):
@@ -228,8 +250,10 @@ class Engine(object):
                 await self._complete_pieces_to_write.put((index, piece_data))
                 self._received_blocks.pop(index)
             else:
-                # TODO: throw away data and log info rather than raising Exception
-                raise Exception('sha1hash does not match for index {}'.format(index))
+                self._received_blocks.pop(index)
+                self.requests.delete_all_for_piece(index)
+                logger.warning('sha1hash does not match for index {}'.format(index))
+                await self.update_peer_requests()
 
     async def peer_messages_loop(self):
         while True:
@@ -255,7 +279,11 @@ class Engine(object):
                 print('Unwritten blocks: {}'.format(unwritten_blocks))
 
     async def file_reading_loop(self):
-        raise Exception('not implemented')
+        while True:
+            peer_state, block_details, block = await self._blocks_for_peers.get()
+            incStats('blocks_out')
+            await peer_state.to_send_queue.put(('block_to_upload', (block_details, block)))
+
 
 
 def run(torrent):

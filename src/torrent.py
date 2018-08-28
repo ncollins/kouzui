@@ -11,7 +11,7 @@ from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
 import bitarray
 import trio
 
-from config import LISTENING_PORT
+from config import DEFAULT_LISTENING_PORT
 
 logger = logging.getLogger('torrent')
 
@@ -180,7 +180,7 @@ class Torrent(object):
         if self._listening_port:
             return self._listening_port
         else:
-            return LISTENING_PORT
+            return DEFAULT_LISTENING_PORT
 
     @property
     def file_path(self):

@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger('file_manager')
+
 import trio
 
 import torrent as tstate
@@ -21,17 +25,22 @@ class FileManager(object):
     async def run(self):
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self.piece_writing_loop)
-            #nursery.start_soon(self.block_reading_loop)
+            nursery.start_soon(self.block_reading_loop)
 
     async def piece_writing_loop(self):
         while True:
             index, piece = await self._pieces_to_write.get()
             await self.write_piece(index, piece)
-            print('Wrote #{} to disk'.format(index))
+            logger.info('Wrote #{} to disk'.format(index))
             await self._write_confirmations.put(index)
         
     async def block_reading_loop(self):
-        raise Exception('not implemented')
+        while True:
+            who, (index, begin, length) = await self._blocks_to_read.get()
+            logger.info('Received read request: {} for {}'.format((index, begin, length), who))
+            block = await self.read_block(index, begin, length)
+            logger.info('Sending block back: {} for {}'.format((index, begin, length), who))
+            await self._blocks_for_peers.put((who, (index, begin, length), block))
 
     async def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length # TODO

@@ -74,7 +74,7 @@ class PeerStream(object):
     async def receive_handshake(self):
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
-            logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
+            #logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
             self._msg_data += data
         handshake_data = self._msg_data[:68]
         self._msg_data = self._msg_data[68:]
@@ -173,11 +173,12 @@ class PeerEngine(object):
                 raise Exception('Handshake data: peer_id does not match')
         else:
             self._peer_state.set_peer_id(peer_id)
-        logger.debug('Handshake OK')
+        logger.info('Received handshake from {}'.format(self._peer_address))
 
     async def send_handshake(self):
         # Handshake
         await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
+        logger.info('Sent handshake to {}'.format(self._peer_address))
 
     async def receiving_loop(self):
         while True:
@@ -193,7 +194,16 @@ class PeerEngine(object):
                 logger.debug('Putting message in queue for engine')
                 await self._received_queue.put((self._peer_state, msg_type, msg_payload))
 
+    async def send_bitfield(self):
+        raw_pieces = self._tstate._complete # TODO don't use private property
+        raw_msg = bytes([PeerMsg.BITFIELD])
+        raw_msg += raw_pieces.tobytes()
+        await self._peer_stream.send_message(raw_msg)
+
     async def sending_loop(self):
+        logger.info('About to send bitfield to {}'.format(self._peer_address))
+        await self.send_bitfield()
+        logger.info('Sent bitfield to {}'.format(self._peer_address))
         while True:
             command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
@@ -203,7 +213,14 @@ class PeerEngine(object):
                     raw_msg += (begin).to_bytes(4, byteorder='big')
                     raw_msg += (length).to_bytes(4, byteorder='big')
                     await self._peer_stream.send_message(raw_msg)
-
+            elif command == 'block_to_upload':
+                (index, begin, length), block_data = data
+                raw_msg = bytes([PeerMsg.PIECE])
+                raw_msg += (index).to_bytes(4, byteorder='big')
+                raw_msg += (begin).to_bytes(4, byteorder='big')
+                raw_msg += block_data
+                logger.info('Uploading block {}'.format((index, begin, length)))
+                await self._peer_stream.send_message(raw_msg)
 
 
 async def start_peer_engine(engine, peer_address, peer_state, stream, initiate=True):
@@ -219,13 +236,16 @@ def make_handler(engine):
         peer_info = stream.socket.getpeername()
         ip: string = peer_info[0]
         port: int = peer_info[1]
-        peer = tstate.Peer(ip, port)
-        logger.debug('Received incoming peer connection from {}'.format(peer))
-        peer_state = await engine.get_or_add_peer(peer, PeerType.SERVER)
-        await start_peer_engine(engine, peer_state, stream, initiate=False)
+        peer_address = tstate.PeerAddress(ip, port)
+        logger.debug('Received incoming peer connection from {}'.format(peer_address))
+        peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
+        await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
     return handler
 
 async def make_standalone(engine, peer_address, peer_state):
     logger.debug('Starting outgoing peer connection to {}'.format(peer_address))
-    stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
-    await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
+    try:
+        stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
+        await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
+    except:
+        logger.warning('Failed to maintain peer connection to {}'.format(peer_address))
