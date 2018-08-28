@@ -66,6 +66,7 @@ class Engine(object):
         self._state = torrent
         # interact with self
         self._peers_without_connection = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._failed_peers             = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
         self._complete_pieces_to_write = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         self._write_confirmations      = trio.Queue(config.INTERNAL_QUEUE_SIZE)
@@ -90,6 +91,10 @@ class Engine(object):
     def msg_from_peer(self) -> trio.Queue:
         return self._msg_from_peer
 
+    @property
+    def failed_peers(self) -> trio.Queue:
+        return self._failed_peers
+
     async def run(self):
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self.peer_clients_loop)
@@ -99,6 +104,7 @@ class Engine(object):
             nursery.start_soon(self.file_write_confirmation_loop)
             nursery.start_soon(self.file_manager.run)
             nursery.start_soon(self.file_reading_loop)
+            nursery.start_soon(self.remove_failed_peers_loop)
 
     async def tracker_loop(self):
         new = True
@@ -283,6 +289,13 @@ class Engine(object):
             peer_state, block_details, block = await self._blocks_for_peers.get()
             incStats('blocks_out')
             await peer_state.to_send_queue.put(('block_to_upload', (block_details, block)))
+
+    async def remove_failed_peers_loop(self):
+        while True:
+            address = await self._failed_peers.get()
+            logger.info('Removing peer: {}'.format(address))
+            if address in self._peers:
+                del self._peers[address]
 
 
 

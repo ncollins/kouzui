@@ -233,13 +233,17 @@ async def start_peer_engine(engine, peer_address, peer_state, stream, initiate=T
 
 def make_handler(engine):
     async def handler(stream):
-        peer_info = stream.socket.getpeername()
-        ip: string = peer_info[0]
-        port: int = peer_info[1]
-        peer_address = tstate.PeerAddress(ip, port)
-        logger.debug('Received incoming peer connection from {}'.format(peer_address))
-        peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
-        await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
+        try:
+            peer_info = stream.socket.getpeername()
+            ip: string = peer_info[0]
+            port: int = peer_info[1]
+            peer_address = tstate.PeerAddress(ip, port)
+            logger.debug('Received incoming peer connection from {}'.format(peer_address))
+            peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
+            await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
+        except: # TODO
+            logger.warning('Failed to maintain peer connection to {}'.format(peer_address))
+            await engine.failed_peers.put(peer_address)
     return handler
 
 async def make_standalone(engine, peer_address, peer_state):
@@ -247,5 +251,6 @@ async def make_standalone(engine, peer_address, peer_state):
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
         await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
-    except:
+    except: # TODO
         logger.warning('Failed to maintain peer connection to {}'.format(peer_address))
+        await engine.failed_peers.put(peer_address)
