@@ -44,7 +44,6 @@ class Engine(object):
         # interact with peer connections 
         self._msg_from_peer            = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
-        #self._queues_for_peers: Dict[state.Peer,trio.Queue] = dict()
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: Dict[int, Set[Tuple[int,bytes]]] = dict()

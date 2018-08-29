@@ -31,9 +31,6 @@ class RequestManager(object):
     def delete_all(self):
         self._requests = set()
 
-    #def number_outstanding_for_peer(self, peer_address: state.PeerAddress):
-    #    return len([r for a, r in self._requests if a == peer_address])
-
     def existing_requests_for_peer(self, peer_address: state.PeerAddress) -> Set[Tuple[int,int,int]]:
         return set(r for a, r in self._requests if a == peer_address)
 
