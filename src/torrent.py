@@ -10,8 +10,6 @@ from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
 import bitarray
 import trio
 
-import peer_state
-
 from config import DEFAULT_LISTENING_PORT
 
 logger = logging.getLogger('torrent')
@@ -79,7 +77,6 @@ class Torrent(object):
     def __init__(self, tdict, info_string, directory, listening_port=None, custom_name=None):
         self._listening_port = listening_port
         self._info_string = info_string
-        #print(info_string)
         self._info_hash = hashlib.sha1(info_string).digest()
         self._peer_id = _generate_peer_id()
         self._uploaded = 0
@@ -119,16 +116,9 @@ class Torrent(object):
         logger.info('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
 
         # info not from .torrent file
-        self._peers: Dict[peer_state.PeerAddress, peer_state.PeerState] = {}
         self._interval = 100
         self._complete_peers = 0
         self._incomplete_peers = 0
-        # ------------------------------------------
-        # Queues are used for outbound communication
-        # ------------------------------------------
-        #self._complete_pieces_queue: trio.Queue[Tuple[int,bytes]] = trio.Queue()
-        #self._incoming_request_queue: trio.Queue[Tuple[int,int,int]] = trio.Queue()
-        #self._requests_from_peers_for_file_blocks: trio.Queue[Tuple[int,int,int]] = trio.Queue()
 
     @property
     def listening_port(self):
@@ -170,24 +160,15 @@ class Torrent(object):
 
     @property
     def tracker_address(self) -> bytes:
-        # TODO - this is very lazy!
-        #without_path = self._raw_tracker_url.rsplit(b'/', 1)[0]
-        #without_port = without_path.rsplit(b':', 1)[0]
-        #without_protocol = without_port.replace(b'http://',b'')
-        #return without_protocol
         return self._tracker_address
 
     @property
     def tracker_port(self) -> int:
-        #print('tracker_url = {}'.format(self.tracker_url))
-        #return int(self._raw_tracker_url.rsplit(b':', 1)[1])
         return self._tracker_port
 
 
     @property
     def tracker_path(self):
-        # TODO - this is very lazy!
-        #return self._raw_tracker_url.rsplit(b'/', 1)[1]
         return self._tracker_path
 
     @property
@@ -210,19 +191,3 @@ class Torrent(object):
 
     def is_piece_complete(self, index):
         return self._complete[index]
-
-    def create_peer_state(self, peer: peer_state.PeerAddress) -> peer_state.PeerState:
-        pieces = bitarray.bitarray(self._num_pieces)
-        pieces.setall(False)
-        # TODO this is crappy as peers collected from tracker at same time
-        # will have different last_seen
-        now = datetime.datetime.now()
-        peer_state = peer_state.PeerState(pieces, now)
-        self._peers[peer] = peer_state
-        return peer_state
-
-    def get_or_add_peer(self, peer: peer_state.PeerAddress) -> peer_state.PeerState:
-        if peer in self._peers:
-            return self._peers[peer]
-        else:
-            return self.create_peer_state(peer)
