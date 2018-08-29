@@ -9,13 +9,6 @@ from config import STREAM_CHUNK_SIZE
 
 logger = logging.getLogger('peer')
 
-# peer listener and peer sender
-# one listener for all peers
-# potentially multiple senders?
-# does this mean a single peer can send stuff over
-# the incoming connection or a specific outbound
-# connection that I opened?
-
 class PeerType(Enum):
     SERVER = 0
     CLIENT = 1
@@ -128,12 +121,6 @@ class PeerEngine(object):
         self._peer_stream = PeerStream(stream)
         self._received_queue = recieved_queue
         self._to_send_queue = to_send_queue
-        #
-        #peer_info = stream.socket.getpeername()
-        #ip: string = peer_info[0]
-        #port: int = peer_info[1]
-        #peer = tstate.Peer(ip, port)
-        #self._peer_state = torrent.get_or_add_peer(peer)
 
     async def run(self, initiate=True):
         try:
@@ -182,7 +169,6 @@ class PeerEngine(object):
         while True:
             (length, data) = await self._peer_stream.receive_message()
             logger.debug('Received message of length {}'.format(length))
-            #self._peer_stream.last_seen = datetime.datetime.now()
             if length == 0:
                 # keepalive message
                 pass
