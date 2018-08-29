@@ -98,8 +98,8 @@ class PeerEngine(object):
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            raise e
             logger.debug('Closing PeerEngine')
+            raise e
 
     async def receive_handshake(self):
         # First, receive handshake
