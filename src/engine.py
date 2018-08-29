@@ -12,6 +12,7 @@ import bencode
 import file_manager
 import peer
 import requests
+import peer_state
 import torrent as state
 import tracker
 
@@ -44,7 +45,7 @@ class Engine(object):
         # interact with peer connections 
         self._msg_from_peer            = trio.Queue(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
-        self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
+        self._peers: Dict[peer_state.PeerAddress, peer_state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: Dict[int, Set[Tuple[int,bytes]]] = dict()
         self.requests = requests.RequestManager()
@@ -84,7 +85,7 @@ class Engine(object):
             # update peers
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers'], self._state)
-            peers = [state.PeerAddress(ip, port) for ip, port, _ in peer_ips_and_ports]
+            peers = [peer_state.PeerAddress(ip, port) for ip, port, _ in peer_ips_and_ports]
             logger.debug('Found peers: {}'.format(peers))
             await self.update_peers(peers)
             # update other info: 
@@ -108,11 +109,11 @@ class Engine(object):
                 (peer_id, peer_state) = await self._peers_without_connection.get()
                 nursery.start_soon(peer.make_standalone, self, peer_id, peer_state)
 
-    async def update_peers(self, peers: List[state.PeerAddress]) -> None:
+    async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
         for p in peers:
             await self.get_or_add_peer(p, peer.PeerType.CLIENT)
 
-    async def get_or_add_peer(self, address: state.PeerAddress, peer_type=peer.PeerType, peer_id=None) -> state.PeerState:
+    async def get_or_add_peer(self, address: peer_state.PeerAddress, peer_type=peer.PeerType, peer_id=None) -> peer_state.PeerState:
         # 1. get or create PeerState
         if address in self._peers:
             return self._peers[address]
@@ -120,15 +121,15 @@ class Engine(object):
             now = datetime.datetime.now()
             pieces = bitarray.bitarray(self._state._num_pieces)
             pieces.setall(False)
-            peer_state = state.PeerState(pieces, now, peer_id=peer_id)
-            self._peers[address] = peer_state
+            p_state = peer_state.PeerState(pieces, now, peer_id=peer_id)
+            self._peers[address] = p_state
         # 2. start connection if needed
         # If server, then connection already exists
         if peer_type == peer.PeerType.SERVER:
-            return peer_state
+            return p_state
         elif peer_type == peer.PeerType.CLIENT:
-            await self._peers_without_connection.put((address, peer_state))
-            return peer_state
+            await self._peers_without_connection.put((address, p_state))
+            return p_state
         else:
             assert(False)
 

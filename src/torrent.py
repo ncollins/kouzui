@@ -1,4 +1,3 @@
-#import collections
 import datetime
 import hashlib
 import itertools
@@ -10,6 +9,8 @@ from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
 
 import bitarray
 import trio
+
+import peer_state
 
 from config import DEFAULT_LISTENING_PORT
 
@@ -32,52 +33,6 @@ logger = logging.getLogger('torrent')
 # d['info']['files'] -> if multiple files, a list of dictionaries with 
 # 'length' and 'path' keys
 
-
-PeerAddress = NamedTuple('PeerAddress', [('ip', bytes), ('port', int)])
-
-
-class PeerState(object):
-    def __init__(self, pieces: bitarray.bitarray, first_seen: datetime.datetime, peer_id = None) -> None:
-        self._pieces = pieces
-        self._first_seen = first_seen
-        self._last_seen = first_seen
-        self._peer_id = peer_id
-        self._requested: Set[Tuple[int,int,int]] = set()
-        self._to_send_queue = trio.Queue(100) # TODO remove magic number
-
-    def add_request(self, request_info: Tuple[int,int,int]) -> None:
-        self._requested.add(request_info)
-
-    def cancel_request(self, request_info: Tuple[int,int,int]) -> None:
-        self._requested.discard(request_info)
-
-    def get_pieces(self):
-        return self._pieces
-
-    def set_pieces(self, new_pieces):
-        # crop the new pieces because peers send data
-        # in complete bytes
-        length = len(self._pieces)
-        self._pieces = new_pieces[:length]
-
-    @property
-    def first_seen(self):
-        return self._first_seen
-
-    @property
-    def last_seen(self):
-        return self._last_seen
-
-    @property
-    def peer_id(self):
-        return self._peer_id
-
-    def set_peer_id(self, peer_id):
-        self._peer_id = peer_id
-
-    @property
-    def to_send_queue(self) -> trio.Queue:
-        return self._to_send_queue
 
 Piece = NamedTuple('Piece', [ ('filename', str), ('index', int), ('sha1hash', bytes)]) 
 
@@ -164,7 +119,7 @@ class Torrent(object):
         logger.info('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
 
         # info not from .torrent file
-        self._peers: Dict[PeerAddress, PeerState] = {}
+        self._peers: Dict[peer_state.PeerAddress, peer_state.PeerState] = {}
         self._interval = 100
         self._complete_peers = 0
         self._incomplete_peers = 0
@@ -256,17 +211,17 @@ class Torrent(object):
     def is_piece_complete(self, index):
         return self._complete[index]
 
-    def create_peer_state(self, peer: PeerAddress) -> PeerState:
+    def create_peer_state(self, peer: peer_state.PeerAddress) -> peer_state.PeerState:
         pieces = bitarray.bitarray(self._num_pieces)
         pieces.setall(False)
         # TODO this is crappy as peers collected from tracker at same time
         # will have different last_seen
         now = datetime.datetime.now()
-        peer_state = PeerState(pieces, now)
+        peer_state = peer_state.PeerState(pieces, now)
         self._peers[peer] = peer_state
         return peer_state
 
-    def get_or_add_peer(self, peer: PeerAddress) -> PeerState:
+    def get_or_add_peer(self, peer: peer_state.PeerAddress) -> peer_state.PeerState:
         if peer in self._peers:
             return self._peers[peer]
         else:

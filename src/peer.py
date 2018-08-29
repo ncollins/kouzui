@@ -5,8 +5,6 @@ from typing import Any, Tuple, Optional
 import bitarray
 import trio
 
-import torrent as tstate
-
 from config import STREAM_CHUNK_SIZE
 
 logger = logging.getLogger('peer')
@@ -237,7 +235,7 @@ def make_handler(engine):
             peer_info = stream.socket.getpeername()
             ip: string = peer_info[0]
             port: int = peer_info[1]
-            peer_address = tstate.PeerAddress(ip, port)
+            peer_address = peer_state.PeerAddress(ip, port)
             logger.debug('Received incoming peer connection from {}'.format(peer_address))
             peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
             await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
