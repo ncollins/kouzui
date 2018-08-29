@@ -47,7 +47,7 @@ class Engine(object):
         #self._queues_for_peers: Dict[state.Peer,trio.Queue] = dict()
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
         # data received but not written to disk
-        self._received_blocks: Dict[int, List[Tuple[int,bytes]]] = {}
+        self._received_blocks: Dict[int, Set[Tuple[int,bytes]]] = dict()
         self.requests = requests.RequestManager()
         self.file_manager = file_manager.FileManager(self._state
                 , self._complete_pieces_to_write
