@@ -11,6 +11,7 @@ import trio
 import bencode
 import file_manager
 import peer
+import requests
 import torrent as state
 import tracker
 
@@ -27,38 +28,6 @@ stats = { 'requests_in': 0
 def incStats(field):
     stats[field] += 1
     logger.info('STATS {}'.format(stats))
-
-class RequestManager(object):
-    '''
-    Keeps track of blocks client requested by index, peer_address
-    and block.
-    '''
-    def __init__(self):
-        self._requests: Set[Tuple[state.PeerAddress,Tuple[int,int,int]]] = set()
-
-    @property
-    def size(self):
-        return len(self._requests)
-
-    def add_request(self, peer_address: state.PeerAddress, block: Tuple[int,int,int]):
-        self._requests.add((peer_address, block))
-
-    def delete_all_for_piece(self, index: int):
-        to_delete = set((a, r) for a, r in self._requests if r[0] == index)
-        logger.info('Found {} block requests to delete for piece index {}'.format(len(to_delete),index))
-        self._requests = set((a, r) for a, r in self._requests if not r[0] == index)
-
-    def delete_all_for_peer(self, peer_address: state.PeerAddress):
-        self._requests = set((a, r) for a, r in self._requests if not a == peer_address)
-
-    def delete_all(self):
-        self._requests = set()
-
-    #def number_outstanding_for_peer(self, peer_address: state.PeerAddress):
-    #    return len([r for a, r in self._requests if a == peer_address])
-
-    def existing_requests_for_peer(self, peer_address: state.PeerAddress) -> Set[Tuple[int,int,int]]:
-        return set(r for a, r in self._requests if a == peer_address)
 
 
 class Engine(object):
@@ -79,7 +48,7 @@ class Engine(object):
         self._peers: Dict[state.PeerAddress, state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: Dict[int, List[Tuple[int,bytes]]] = {}
-        self.requests = RequestManager()
+        self.requests = requests.RequestManager()
         self.file_manager = file_manager.FileManager(self._state
                 , self._complete_pieces_to_write
                 , self._write_confirmations
