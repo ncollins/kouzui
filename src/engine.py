@@ -11,7 +11,7 @@ import trio
 import bencode
 import file_manager
 import messages
-import peer
+import peer_connection
 import requests
 import peer_state
 import torrent as state
@@ -98,7 +98,7 @@ class Engine(object):
             new = False
 
     async def peer_server_loop(self):
-        await trio.serve_tcp(peer.make_handler(self), self._state.listening_port)
+        await trio.serve_tcp(peer_connection.make_handler(self), self._state.listening_port)
 
     async def peer_clients_loop(self):
         '''
@@ -108,7 +108,7 @@ class Engine(object):
         async with trio.open_nursery() as nursery:
             while True:
                 (peer_id, peer_state) = await self._peers_without_connection.get()
-                nursery.start_soon(peer.make_standalone, self, peer_id, peer_state)
+                nursery.start_soon(peer_connection.make_standalone, self, peer_id, peer_state)
 
     async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
         for p in peers:
