@@ -1,4 +1,3 @@
-from enum import Enum
 import logging
 from typing import Tuple
 
@@ -6,14 +5,11 @@ import bitarray
 import trio
 
 import messages
+import peer_state
+
 from config import STREAM_CHUNK_SIZE
 
 logger = logging.getLogger('peer')
-
-class PeerType(Enum):
-    SERVER = 0
-    CLIENT = 1
-
 
 class PeerStream(object):
     '''
@@ -190,7 +186,7 @@ def make_handler(engine):
             port: int = peer_info[1]
             peer_address = peer_state.PeerAddress(ip, port)
             logger.debug('Received incoming peer connection from {}'.format(peer_address))
-            peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
+            peer_state = await engine.get_or_add_peer(peer_address, peer_state.PeerType.SERVER)
             await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
         except Exception as e: # TODO this might be too general
             logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))

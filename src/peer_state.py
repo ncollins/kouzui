@@ -1,4 +1,5 @@
 import datetime
+from enum import Enum
 from typing import NamedTuple, Tuple, Set
 
 import bitarray
@@ -6,6 +7,9 @@ import trio
 
 PeerAddress = NamedTuple('PeerAddress', [('ip', bytes), ('port', int)])
 
+class PeerType(Enum):
+    SERVER = 0
+    CLIENT = 1
 
 class PeerState(object):
     def __init__(self, pieces: bitarray.bitarray, first_seen: datetime.datetime, peer_id = None) -> None:

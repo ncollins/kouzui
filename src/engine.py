@@ -112,9 +112,9 @@ class Engine(object):
 
     async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
         for p in peers:
-            await self.get_or_add_peer(p, peer.PeerType.CLIENT)
+            await self.get_or_add_peer(p, peer_state.PeerType.CLIENT)
 
-    async def get_or_add_peer(self, address: peer_state.PeerAddress, peer_type=peer.PeerType, peer_id=None) -> peer_state.PeerState:
+    async def get_or_add_peer(self, address: peer_state.PeerAddress, peer_type=peer_state.PeerType, peer_id=None) -> peer_state.PeerState:
         # 1. get or create PeerState
         if address in self._peers:
             return self._peers[address]
@@ -126,9 +126,9 @@ class Engine(object):
             self._peers[address] = p_state
         # 2. start connection if needed
         # If server, then connection already exists
-        if peer_type == peer.PeerType.SERVER:
+        if peer_type == peer_state.PeerType.SERVER:
             return p_state
-        elif peer_type == peer.PeerType.CLIENT:
+        elif peer_type == peer_state.PeerType.CLIENT:
             await self._peers_without_connection.put((address, p_state))
             return p_state
         else:
