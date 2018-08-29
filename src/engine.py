@@ -10,6 +10,7 @@ import trio
 
 import bencode
 import file_manager
+import messages
 import peer
 import requests
 import peer_state
@@ -170,36 +171,36 @@ class Engine(object):
                 await peer_state.to_send_queue.put(("blocks_to_request", new_requests))
 
     async def handle_peer_message(self, peer_state, msg_type, msg_payload):
-        if msg_type == peer.PeerMsg.CHOKE:
+        if msg_type == messages.PeerMsg.CHOKE:
             logger.debug('Got CHOKE') # TODO
-        elif msg_type == peer.PeerMsg.UNCHOKE:
+        elif msg_type == messages.PeerMsg.UNCHOKE:
             logger.debug('Got UNCHOKE') # TODO
-        elif msg_type == peer.PeerMsg.INTERESTED:
+        elif msg_type == messages.PeerMsg.INTERESTED:
             logger.debug('Got INTERESTED') # TODO
-        elif msg_type == peer.PeerMsg.NOT_INTERESTED:
+        elif msg_type == messages.PeerMsg.NOT_INTERESTED:
             logger.debug('Got NOT_INTERESTED') # TODO
-        elif msg_type == peer.PeerMsg.HAVE:
+        elif msg_type == messages.PeerMsg.HAVE:
             logger.debug('Got HAVE')
-            index: int = peer.parse_have(msg_payload)
+            index: int = messages.parse_have(msg_payload)
             peer_state.get_pieces()[index] = True
-        elif msg_type == peer.PeerMsg.BITFIELD:
+        elif msg_type == messages.PeerMsg.BITFIELD:
             logger.debug('Got BITFIELD')
-            bitfield = peer.parse_bitfield(msg_payload)
+            bitfield = messages.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
-        elif msg_type == peer.PeerMsg.REQUEST:
+        elif msg_type == messages.PeerMsg.REQUEST:
             logger.info('Got REQUEST') # TODO
             incStats('requests_in')
-            request_info: Tuple[int,int,int] = peer.parse_request_or_cancel(msg_payload)
+            request_info: Tuple[int,int,int] = messages.parse_request_or_cancel(msg_payload)
             await self._blocks_to_read.put((peer_state, request_info))
-        elif msg_type == peer.PeerMsg.PIECE:
-            (index, begin, data) = peer.parse_piece(msg_payload)
+        elif msg_type == messages.PeerMsg.PIECE:
+            (index, begin, data) = messages.parse_piece(msg_payload)
             incStats('blocks_in')
             logger.info('Got PIECE: {}'.format((index, begin, len(data))))
             await self.handle_block_received(index, begin, data)
             #self._torrent.add_piece(index, begin, data)
-        elif msg_type == peer.PeerMsg.CANCEL:
+        elif msg_type == messages.PeerMsg.CANCEL:
             logger.debug('Got CANCEL') # TODO
-            request_info = peer.parse_request_or_cancel(msg_payload)
+            request_info = messages.parse_request_or_cancel(msg_payload)
             #self._peer_state.cancel_request(request_info)
         else:
             # TODO - Exceptions are bad here! Should this be assert false?

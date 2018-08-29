@@ -1,10 +1,11 @@
-from enum import Enum, IntEnum
+from enum import Enum
 import logging
-from typing import Any, Tuple, Optional
+from typing import Tuple
 
 import bitarray
 import trio
 
+import messages
 from config import STREAM_CHUNK_SIZE
 
 logger = logging.getLogger('peer')
@@ -12,40 +13,6 @@ logger = logging.getLogger('peer')
 class PeerType(Enum):
     SERVER = 0
     CLIENT = 1
-
-class PeerMsg(IntEnum):
-    CHOKE          = 0
-    UNCHOKE        = 1
-    INTERESTED     = 2
-    NOT_INTERESTED = 3
-    HAVE           = 4
-    BITFIELD       = 5
-    REQUEST        = 6
-    PIECE          = 7
-    CANCEL         = 8
-
-def parse_have(s: bytes) -> int:
-    return int(s)
-
-def parse_bitfield(s: bytes) -> bitarray:
-    # NOTE the input will be an integer number of bytes, so it may
-    # have extra bits
-    b = bitarray.bitarray()
-    b.frombytes(s)
-    return b
-
-def parse_request_or_cancel(s: bytes) -> Tuple[int,int,int]:
-    # This should be 12 bytes in most cases, so I'm hardcoding it for now.
-    index = int.from_bytes(s[:4], byteorder='big')
-    begin = int.from_bytes(s[4:8], byteorder='big')
-    length = int.from_bytes(s[8:], byteorder='big')
-    return (index, begin, length)
-
-def parse_piece(s):
-    index = int.from_bytes(s[:4], byteorder='big')
-    begin = int.from_bytes(s[4:8], byteorder='big')
-    data = s[8:]
-    return (index, begin, data)
 
 
 class PeerStream(object):
@@ -180,7 +147,7 @@ class PeerEngine(object):
 
     async def send_bitfield(self):
         raw_pieces = self._tstate._complete # TODO don't use private property
-        raw_msg = bytes([PeerMsg.BITFIELD])
+        raw_msg = bytes([messages.PeerMsg.BITFIELD])
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
@@ -192,14 +159,14 @@ class PeerEngine(object):
             command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
                 for index, begin, length in data:
-                    raw_msg = bytes([PeerMsg.REQUEST])
+                    raw_msg = bytes([messages.PeerMsg.REQUEST])
                     raw_msg += (index).to_bytes(4, byteorder='big')
                     raw_msg += (begin).to_bytes(4, byteorder='big')
                     raw_msg += (length).to_bytes(4, byteorder='big')
                     await self._peer_stream.send_message(raw_msg)
             elif command == 'block_to_upload':
                 (index, begin, length), block_data = data
-                raw_msg = bytes([PeerMsg.PIECE])
+                raw_msg = bytes([messages.PeerMsg.PIECE])
                 raw_msg += (index).to_bytes(4, byteorder='big')
                 raw_msg += (begin).to_bytes(4, byteorder='big')
                 raw_msg += block_data
@@ -225,8 +192,8 @@ def make_handler(engine):
             logger.debug('Received incoming peer connection from {}'.format(peer_address))
             peer_state = await engine.get_or_add_peer(peer_address, PeerType.SERVER)
             await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
-        except: # TODO
-            logger.warning('Failed to maintain peer connection to {}'.format(peer_address))
+        except Exception as e: # TODO this might be too general
+            logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))
             await engine.failed_peers.put(peer_address)
     return handler
 
@@ -235,6 +202,6 @@ async def make_standalone(engine, peer_address, peer_state):
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
         await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
-    except: # TODO
-        logger.warning('Failed to maintain peer connection to {}'.format(peer_address))
+    except Exception as e: # TODO this might be too general
+        logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))
         await engine.failed_peers.put(peer_address)
