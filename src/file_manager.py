@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 logger = logging.getLogger('file_manager')
@@ -49,6 +50,8 @@ class FileManager(object):
         await self._file.flush()
 
     async def read_block(self, index: int, begin: int, length: int) -> bytes:
-        start = index * self._torrent.piece_length(index) + begin
+        start = index * self._torrent._piece_length + begin
         await self._file.seek(start)
-        return await self._file.read(length)
+        block = await self._file.read(length)
+        logging.info('Read sha1 {}: {}'.format((index,begin), hashlib.sha1(block).digest()))
+        return block
