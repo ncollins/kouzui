@@ -26,9 +26,12 @@ class PeerStream(object):
         # send keep-alives at least every 2 mins
 
     async def receive_handshake(self):
+        logger.debug('Starting to received handshake on {}'.format(self._stream))
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
-            #logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
+            if data == b'':
+                raise Exception('EOF in handshake')
+            logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
             self._msg_data += data
         handshake_data = self._msg_data[:68]
         self._msg_data = self._msg_data[68:]
@@ -39,8 +42,11 @@ class PeerStream(object):
         msg_length = None # self._msg_data persists between calls but msg_length resets each time
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+            #logging.info('received_message')
             if data != b'':
                 logger.debug('received_message: Got peer data, first 10 bytes: {}'.format(data[:10]))
+            else:
+                raise Exception('EOF')
             self._msg_data += data
             # 1) see if we have enough to get message length, if not continue
             if msg_length is None and len(self._msg_data) < 4:
