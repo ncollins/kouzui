@@ -131,14 +131,6 @@ class Torrent(object):
     def file_path(self):
         return self._filename
 
-    @property
-    def incoming_request_queue(self):
-        return self._incoming_request_queue
-
-    @property
-    def complete_pieces_queue(self):
-        return self._complete_pieces_queue
-
     def piece_length(self, index: int) -> int:
         last_piece = self._num_pieces - 1
         if index < last_piece:
@@ -165,7 +157,6 @@ class Torrent(object):
     @property
     def tracker_port(self) -> int:
         return self._tracker_port
-
 
     @property
     def tracker_path(self):

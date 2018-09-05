@@ -78,33 +78,49 @@ class PeerStream(object):
         data = (0).to_bytes(4, byteorder='big')
         await self._stream.sendall(data)
 
+class HandshakeError(Exception):
+    def __init__(self,reason,data):
+        self.reason = reason
+        self.data = data
 
 class PeerEngine(object):
     '''
     PeerEngine is initialized with a stream and two queues.
     '''
-    def __init__(self, tstate, peer_address, peer_state, stream, recieved_queue, to_send_queue):
-        self._tstate = tstate
+    def __init__(self, engine, peer_address, expected_peer_id, stream, recieved_queue):
+        self._tstate = engine._state
+        self._main_engine = engine
         self._peer_address = peer_address
-        self._peer_state = peer_state
+        self._expected_peer_id = expected_peer_id
+        self._peer_id_and_state = None
         self._peer_stream = PeerStream(stream)
         self._received_queue = recieved_queue
-        self._to_send_queue = to_send_queue
+        self._to_send_queue = None
 
     async def run(self, initiate=True):
         try:
             # Do handshakes before starting main loops
             if initiate == True:
                 await self.send_handshake()
-                await self.receive_handshake()
+                peer_id = await self.receive_handshake()
             else:
-                await self.receive_handshake()
+                peer_id = await self.receive_handshake()
                 await self.send_handshake()
+            if peer_id in self._main_engine._peers:
+                # We already have peer, close connection
+                raise Exception('peer already exists')
+            else:
+                peer_s = peer_state.PeerState(peer_id, self._tstate._num_pieces) # TODO don't use private property
+                self._main_engine._peers[peer_id] = peer_s
+                self._peer_id_and_state = (peer_id, peer_s)
+                self._to_send_queue = peer_s.to_send_queue
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            logger.debug('Closing PeerEngine')
+            if self._peer_id_and_state:
+                self._main_engine._peers.pop(peer_id)
+            logger.info('Closing PeerEngine {} / {}'.format(self._peer_address, self._peer_id_and_state))
             raise e
 
     async def receive_handshake(self):
@@ -113,21 +129,20 @@ class PeerEngine(object):
         logger.debug('Handshake data = {}'.format(data))
         # Second, validation
         if len(data) < 20 + 8 + 20 + 20:
-            raise Exception('Handshake data: wrong length')
+            raise HandshakeError('Handshake data: wrong length', data)
         header = data[:20]
         _reserved_bytes = data[20:20+8]
         sha1hash = data[20+8:20+8+20]
         peer_id = data[20+8+20:20+8+20+20]
         if not (header == b'\x13BitTorrent protocol'):
-            raise Exception('Handshake data: wrong header')
+            raise HandshakeError('Handshake data: wrong header', header)
         if not (sha1hash == self._tstate.info_hash):
-            raise Exception('Handshake data: wrong hash')
-        if self._peer_state.peer_id:
-            if not self._peer_state.peer_id == peer_id:
-                raise Exception('Handshake data: peer_id does not match')
-        else:
-            self._peer_state.set_peer_id(peer_id)
-        logger.info('Received handshake from {}'.format(self._peer_address))
+            raise HandshakeError('Handshake data: wrong hash', sha1hash)
+        if self._expected_peer_id:
+            if not self._expected_peer_id == peer_id:
+                raise HandshakeError('Handshake data: peer_id does not match', peer_id)
+        logger.info('Received handshake from {}/{}'.format(self._peer_address, peer_id))
+        return peer_id
 
     async def send_handshake(self):
         # Handshake
@@ -136,6 +151,7 @@ class PeerEngine(object):
 
     async def receiving_loop(self):
         while True:
+            logging.info('receiving_loop')
             (length, data) = await self._peer_stream.receive_message()
             logger.debug('Received message of length {}'.format(length))
             if length == 0:
@@ -145,7 +161,7 @@ class PeerEngine(object):
                 msg_type = data[0]
                 msg_payload = data[1:]
                 logger.debug('Putting message in queue for engine')
-                await self._received_queue.put((self._peer_state, msg_type, msg_payload))
+                await self._received_queue.put((self._peer_id_and_state[1], msg_type, msg_payload))
 
     async def send_bitfield(self):
         raw_pieces = self._tstate._complete # TODO don't use private property
@@ -154,10 +170,11 @@ class PeerEngine(object):
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self):
-        logger.info('About to send bitfield to {}'.format(self._peer_address))
+        logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
-        logger.info('Sent bitfield to {}'.format(self._peer_address))
+        logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
         while True:
+            logging.info('sending_loop')
             command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
                 for index, begin, length in data:
@@ -165,24 +182,25 @@ class PeerEngine(object):
                     raw_msg += (index).to_bytes(4, byteorder='big')
                     raw_msg += (begin).to_bytes(4, byteorder='big')
                     raw_msg += (length).to_bytes(4, byteorder='big')
+                    logger.info('Requesting block {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
                     await self._peer_stream.send_message(raw_msg)
+                    await trio.sleep(0.1) # TODO find while this helps, and make it more robust
             elif command == 'block_to_upload':
                 (index, begin, length), block_data = data
                 raw_msg = bytes([messages.PeerMsg.PIECE])
                 raw_msg += (index).to_bytes(4, byteorder='big')
                 raw_msg += (begin).to_bytes(4, byteorder='big')
                 raw_msg += block_data
-                logger.info('Uploading block {}'.format((index, begin, length)))
+                logger.info('Uploading block {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
 
 
-async def start_peer_engine(engine, peer_address, peer_state, stream, initiate=True):
+async def start_peer_engine(engine, peer_address, stream, initiate=True):
     '''
     Find (or create) queues for relevant stream, and create PeerEngine.
     '''
-    peer_engine = PeerEngine(engine._state, peer_address, peer_state, stream, engine.msg_from_peer, peer_state.to_send_queue)
+    peer_engine = PeerEngine(engine, peer_address, None, stream, engine.msg_from_peer)
     await peer_engine.run(initiate=True)
-
 
 def make_handler(engine):
     async def handler(stream):
@@ -192,18 +210,15 @@ def make_handler(engine):
             port: int = peer_info[1]
             peer_address = peer_state.PeerAddress(ip, port)
             logger.debug('Received incoming peer connection from {}'.format(peer_address))
-            peer_state = await engine.get_or_add_peer(peer_address, peer_state.PeerType.SERVER)
-            await start_peer_engine(engine, peer_address, peer_state, stream, initiate=False)
+            await start_peer_engine(engine, peer_address, stream, initiate=False)
         except Exception as e: # TODO this might be too general
             logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))
-            await engine.failed_peers.put(peer_address)
     return handler
 
-async def make_standalone(engine, peer_address, peer_state):
+async def make_standalone(engine, peer_address):
     logger.debug('Starting outgoing peer connection to {}'.format(peer_address))
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
-        await start_peer_engine(engine, peer_address, peer_state, stream, initiate=True)
+        await start_peer_engine(engine, peer_address, stream, initiate=True)
     except Exception as e: # TODO this might be too general
         logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))
-        await engine.failed_peers.put(peer_address)
