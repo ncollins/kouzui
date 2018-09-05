@@ -151,6 +151,8 @@ class Engine(object):
             logger.info('Not making new requests, download is complete')
             return
         for address, peer_state in self._peers.items():
+            if peer_state.is_choked:
+                continue
             logger.info('`update_peer_requests` peer_id = {}'.format(address))
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
