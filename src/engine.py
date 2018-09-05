@@ -198,7 +198,7 @@ class Engine(object):
             logger.info('Received BITFIELD from {}'.format(peer_id))
             bitfield = messages.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
-            await self.update_peer_requests()
+            #await self.update_peer_requests()
         elif msg_type == messages.PeerMsg.REQUEST:
             incStats('requests_in')
             request_info: Tuple[int,int,int] = messages.parse_request_or_cancel(msg_payload)
@@ -240,7 +240,7 @@ class Engine(object):
                 self._received_blocks.pop(index)
                 self.requests.delete_all_for_piece(index)
                 logger.warning('sha1hash does not match for index {}'.format(index))
-                await self.update_peer_requests()
+                #await self.update_peer_requests()
 
     async def peer_messages_loop(self):
         while True:

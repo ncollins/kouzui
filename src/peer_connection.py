@@ -39,12 +39,13 @@ class PeerStream(object):
         return handshake_data
 
     async def receive_message(self) -> Tuple[int, bytes]:
+        logger.debug('Called received_message for {}'.format(self._stream))
         msg_length = None # self._msg_data persists between calls but msg_length resets each time
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             #logging.info('received_message')
             if data != b'':
-                logger.debug('received_message: Got peer data, first 10 bytes: {}'.format(data[:10]))
+                logger.debug('received_message: Got peer data, first 10 bytes: {} from {}'.format(data[:10], self._stream))
             else:
                 raise Exception('EOF')
             self._msg_data += data
@@ -169,10 +170,23 @@ class PeerEngine(object):
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
+    async def send_interested(self):
+        raw_msg = bytes([messages.PeerMsg.INTERESTED])
+        await self._peer_stream.send_message(raw_msg)
+
+    async def send_unchoke(self):
+        raw_msg = bytes([messages.PeerMsg.UNCHOKE])
+        await self._peer_stream.send_message(raw_msg)
+
     async def sending_loop(self):
         logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
+        await trio.sleep(0.05) # TODO
+        await self.send_unchoke()
+        logger.info('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
+        await trio.sleep(0.05) # TODO
+        await self.send_interested()
         while True:
             logging.info('sending_loop')
             command, data = await self._to_send_queue.get()
@@ -182,8 +196,9 @@ class PeerEngine(object):
                     raw_msg += (index).to_bytes(4, byteorder='big')
                     raw_msg += (begin).to_bytes(4, byteorder='big')
                     raw_msg += (length).to_bytes(4, byteorder='big')
-                    logger.info('Requesting block {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                    logger.info('Pre-send REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
                     await self._peer_stream.send_message(raw_msg)
+                    logger.info('Sent REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
                     await trio.sleep(0.1) # TODO find while this helps, and make it more robust
             elif command == 'block_to_upload':
                 (index, begin, length), block_data = data
