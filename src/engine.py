@@ -223,8 +223,6 @@ class Engine(object):
         blocks_set.add((begin, data))
         blocks = sorted(blocks_set)
         piece_data = b''
-        if index == 83:
-            print('Blocks for #83: {}'.format([(83, offset, len(b)) for offset, b in self._received_blocks[index]]))
         for offset, block_data in blocks:
             logging.info('Received sha1 {}: {}'.format((index,offset), hashlib.sha1(block_data).digest()))
             if offset == len(piece_data):
