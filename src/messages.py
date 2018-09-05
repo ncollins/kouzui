@@ -15,7 +15,7 @@ class PeerMsg(IntEnum):
     CANCEL         = 8
 
 def parse_have(s: bytes) -> int:
-    return int(s)
+    return int.from_bytes(s[:4], byteorder='big')
 
 def parse_bitfield(s: bytes) -> bitarray:
     # NOTE the input will be an integer number of bytes, so it may

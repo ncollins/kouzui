@@ -250,12 +250,17 @@ class Engine(object):
             await self.handle_peer_message(peer_state.peer_id, msg_type, msg_payload)
             await self.update_peer_requests()
 
+    async def announce_have_piece(self, index):
+        for _peer_id, peer_s in self._peers.items(): # TODO could this be unsafe?
+            await peer_s.to_send_queue.put(('announce_have_piece', index))
+
     async def file_write_confirmation_loop(self):
         while True:
             logging.info('file_write_confirmation_loop')
             index = await self._write_confirmations.get()
             self.requests.delete_all_for_piece(index)
             self._state._complete[index] = True # TODO remove private property access
+            await self.announce_have_piece(index)
             await self.update_peer_requests()
             # TODO - send "HAVE" message
             logger.info('Have {} pieces of {}, with {} blocks outstanding'.format(sum(self._state._complete), len(self._state._complete), self.requests.size))

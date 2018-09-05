@@ -21,7 +21,7 @@ def main():
     else:
         log_level = getattr(logging, 'WARNING')
     logfile = 'tmp/{}.log'.format(args.listening_port)
-    logging.basicConfig(filename=logfile, level=log_level, format='%(asctime)s %(message)s')
+    logging.basicConfig(filename=logfile, level=log_level, format='%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s')
 
     with open(args.torrent_path, 'rb') as f:
         torrent_data : dict = bencode.parse_value(f)

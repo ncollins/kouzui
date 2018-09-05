@@ -39,7 +39,7 @@ class PeerStream(object):
         return handshake_data
 
     async def receive_message(self) -> Tuple[int, bytes]:
-        logger.debug('Called received_message for {}'.format(self._stream))
+        logger.debug('Called receive_message for {}'.format(self._stream))
         msg_length = None # self._msg_data persists between calls but msg_length resets each time
         while True:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
@@ -121,7 +121,7 @@ class PeerEngine(object):
         except Exception as e:
             if self._peer_id_and_state:
                 self._main_engine._peers.pop(peer_id)
-            logger.info('Closing PeerEngine {} / {}'.format(self._peer_address, self._peer_id_and_state))
+            logger.info('Closing PeerEngine {} / {} / {}'.format(self._peer_address, self._peer_id_and_state, e))
             raise e
 
     async def receive_handshake(self):
@@ -170,9 +170,9 @@ class PeerEngine(object):
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
-    async def send_interested(self):
-        raw_msg = bytes([messages.PeerMsg.INTERESTED])
-        await self._peer_stream.send_message(raw_msg)
+    #async def send_interested(self):
+    #    raw_msg = bytes([messages.PeerMsg.INTERESTED])
+    #    await self._peer_stream.send_message(raw_msg)
 
     async def send_unchoke(self):
         raw_msg = bytes([messages.PeerMsg.UNCHOKE])
@@ -182,10 +182,11 @@ class PeerEngine(object):
         logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
+        await trio.sleep(0.2) # TODO :(
         await self.send_unchoke()
         logger.info('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
-        await self.send_interested()
-        logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
+        #await self.send_interested()
+        #logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
             command, data = await self._to_send_queue.get()
@@ -205,8 +206,17 @@ class PeerEngine(object):
                 raw_msg += (index).to_bytes(4, byteorder='big')
                 raw_msg += (begin).to_bytes(4, byteorder='big')
                 raw_msg += block_data
-                logger.info('Uploading block {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                logger.info('Pre-send PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
+                logger.info('Sent PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
+            elif command == 'announce_have_piece':
+                raw_msg = bytes([messages.PeerMsg.HAVE])
+                raw_msg += (data).to_bytes(4, byteorder='big')
+                logger.info('Pre-send HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+                await self._peer_stream.send_message(raw_msg)
+                logger.info('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+            else:
+                logger.warning('PeerEngine for {} received unsupported message: {}'.format(self._peer_id_and_state[0], (command, data)))
 
 
 async def start_peer_engine(engine, peer_address, stream, initiate=True):
