@@ -21,6 +21,17 @@ class PeerState(object):
         self._last_seen = now
         self._peer_id = peer_id
         self._to_send_queue = trio.Queue(100) # TODO remove magic number
+        self._chocked = True
+
+    def choke(self):
+        self._choked = True
+
+    def unchoke(self):
+        self._choked = False
+
+    @property
+    def is_choked(self):
+        return self._choked
 
     def get_pieces(self):
         return self._pieces

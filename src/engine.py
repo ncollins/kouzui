@@ -179,26 +179,28 @@ class Engine(object):
             return
         peer_state = self._peers[peer_id]
         if msg_type == messages.PeerMsg.CHOKE:
-            logger.debug('Got CHOKE') # TODO
+            logger.info('Received CHOKE from {}'.format(peer_id))
+            peer_state.choke()
         elif msg_type == messages.PeerMsg.UNCHOKE:
-            logger.debug('Got UNCHOKE') # TODO
+            logger.info('Received UNCHOKE from {}'.format(peer_id))
+            peer_state.unchoke()
         elif msg_type == messages.PeerMsg.INTERESTED:
-            logger.debug('Got INTERESTED') # TODO
+            logger.warning('Received INTERESTED from {} (not implemented)'.format(peer_id)) # TODO
         elif msg_type == messages.PeerMsg.NOT_INTERESTED:
-            logger.debug('Got NOT_INTERESTED') # TODO
+            logger.warning('Received NOT_INTERESTED from {} (not implemented)'.format(peer_id)) # TODO
         elif msg_type == messages.PeerMsg.HAVE:
-            logger.debug('Got HAVE')
+            logger.debug('Received HAVE from {}'.format(peer_id))
             index: int = messages.parse_have(msg_payload)
             peer_state.get_pieces()[index] = True
         elif msg_type == messages.PeerMsg.BITFIELD:
-            logger.info('Got BITFIELD from {}'.format(peer_id))
+            logger.info('Received BITFIELD from {}'.format(peer_id))
             bitfield = messages.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
             await self.update_peer_requests()
         elif msg_type == messages.PeerMsg.REQUEST:
             incStats('requests_in')
             request_info: Tuple[int,int,int] = messages.parse_request_or_cancel(msg_payload)
-            logger.info('Received request for {} from {}'.format(request_info, peer_state.peer_id))
+            logger.info('Received REQUEST from {} from {}'.format(request_info, peer_state.peer_id))
             await self._blocks_to_read.put((peer_state.peer_id, request_info))
         elif msg_type == messages.PeerMsg.PIECE:
             (index, begin, data) = messages.parse_piece(msg_payload)
@@ -206,7 +208,7 @@ class Engine(object):
             logger.info('Received block {} from {}'.format((index, begin, len(data)), peer_state.peer_id))
             await self.handle_block_received(index, begin, data)
         elif msg_type == messages.PeerMsg.CANCEL:
-            logger.debug('Got CANCEL') # TODO
+            logger.warning('Received CANCEL from {} (not implemented)'.format(peer_id)) # TODO
             request_info = messages.parse_request_or_cancel(msg_payload)
         else:
             # TODO - Exceptions are bad here! Should this be assert false?
