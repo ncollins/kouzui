@@ -161,7 +161,7 @@ class Engine(object):
             logger.info('`update_peer_requests` indexes[:5] = {}, self any? {}, peer any? {}'.format(indexes, self._state._complete.any(), peer_state._pieces.any()))
             if indexes:
                 existing_requests = self.requests.existing_requests_for_peer(address)
-                if len(existing_requests) > 52: #config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
+                if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
                     logger.info('Not making new requests: # existing for peer <{}> = {}'.format(address, len(existing_requests)))
                     new_requests = set()
                 else:
