@@ -182,11 +182,10 @@ class PeerEngine(object):
         logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
-        await trio.sleep(0.05) # TODO
         await self.send_unchoke()
         logger.info('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
-        await trio.sleep(0.05) # TODO
         await self.send_interested()
+        logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
             command, data = await self._to_send_queue.get()
