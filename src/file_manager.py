@@ -16,8 +16,7 @@ class FileManager(object):
     def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue) -> None:
         self._torrent = torrent
         _create_empty_file(self._torrent.file_path, self._torrent._file_length) # TODO don't read private property
-        self._raw_file = open(self._torrent.file_path, 'rb+')
-        self._file = trio.wrap_file(self._raw_file)
+        self._file = open(self._torrent.file_path, 'rb+')
         self._pieces_to_write = pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
@@ -45,13 +44,13 @@ class FileManager(object):
 
     async def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length # TODO
-        await self._file.seek(start)
-        await self._file.write(piece)
-        await self._file.flush()
+        self._file.seek(start)
+        self._file.write(piece)
+        self._file.flush()
 
     async def read_block(self, index: int, begin: int, length: int) -> bytes:
         start = index * self._torrent._piece_length + begin
-        await self._file.seek(start)
-        block = await self._file.read(length)
+        self._file.seek(start)
+        block = self._file.read(length)
         logging.info('Read sha1 {}: {}'.format((index,begin), hashlib.sha1(block).digest()))
         return block
