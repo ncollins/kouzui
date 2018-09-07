@@ -7,7 +7,7 @@ import trio
 import messages
 import peer_state
 
-from config import STREAM_CHUNK_SIZE
+from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
 logger = logging.getLogger('peer')
 
@@ -19,17 +19,16 @@ class PeerStream(object):
     is to find the length first and then keep accumulating data
     until it has enough.
     '''
-    def __init__(self, stream, keepalive_gap_in_seconds = 110):
+    def __init__(self, stream):
         self._stream = stream
         self._msg_data = b''
-        self._keepalive_gap_in_seconds = keepalive_gap_in_seconds
-        # send keep-alives at least every 2 mins
 
     async def receive_handshake(self):
         logger.debug('Starting to received handshake on {}'.format(self._stream))
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data == b'':
+                logger.debug('empty data in handshake, about to raise EOF from {}'.format(self._stream))
                 raise Exception('EOF in handshake')
             logger.debug('Initial incoming handshake data from {}: {}'.format(self._stream.socket.getpeername(), data))
             self._msg_data += data
@@ -47,6 +46,7 @@ class PeerStream(object):
             if data != b'':
                 logger.debug('received_message: Got peer data, first 10 bytes: {} from {}'.format(data[:10], self._stream))
             else:
+                logger.debug('empty data, about to raise EOF from {}'.format(self._stream))
                 raise Exception('EOF')
             self._msg_data += data
             # 1) see if we have enough to get message length, if not continue
@@ -77,7 +77,7 @@ class PeerStream(object):
 
     async def send_keepalive(self) -> None:
         data = (0).to_bytes(4, byteorder='big')
-        await self._stream.sendall(data)
+        await self._stream.send_all(data)
 
 class HandshakeError(Exception):
     def __init__(self,reason,data):
@@ -189,7 +189,9 @@ class PeerEngine(object):
         #logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
-            command, data = await self._to_send_queue.get()
+            command, data = 'keepalive', None
+            with trio.move_on_after(KEEPALIVE_SECONDS):
+                command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
                 for index, begin, length in data:
                     raw_msg = bytes([messages.PeerMsg.REQUEST])
@@ -215,6 +217,11 @@ class PeerEngine(object):
                 logger.info('Pre-send HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
                 logger.info('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+            elif command == 'keepalive':
+                logger.info('Pre-send KEEPALIVE to {}'.format(data, self._peer_id_and_state[0]))
+                await self._peer_stream.send_keepalive()
+                logger.info('Sent KEEPALIVE to {}'.format(data, self._peer_id_and_state[0]))
+
             else:
                 logger.warning('PeerEngine for {} received unsupported message: {}'.format(self._peer_id_and_state[0], (command, data)))
 
