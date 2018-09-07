@@ -251,7 +251,8 @@ class Engine(object):
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index):
-        for _peer_id, peer_s in self._peers.items(): # TODO could this be unsafe?
+        peers = self._peers.copy() # shallow copy, but that should be enough as we're not modifying the PeerState objects
+        for _peer_id, peer_s in peers.items():
             await peer_s.to_send_queue.put(('announce_have_piece', index))
 
     async def file_write_confirmation_loop(self):
@@ -259,6 +260,8 @@ class Engine(object):
             logging.info('file_write_confirmation_loop')
             index = await self._write_confirmations.get()
             self.requests.delete_all_for_piece(index)
+            # NB - update the _complete vector first to guarantee that new clients get
+            # the most upto date bitfield (they may also get a redundant HAVE message)
             self._state._complete[index] = True # TODO remove private property access
             await self.announce_have_piece(index)
             await self.update_peer_requests()
