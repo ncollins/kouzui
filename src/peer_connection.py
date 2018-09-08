@@ -194,9 +194,9 @@ class PeerEngine(object):
         #logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
-            #command, data = 'keepalive', None
-            #with trio.move_on_after(KEEPALIVE_SECONDS):
-            command, data = await self._to_send_queue.get()
+            command, data = 'keepalive', None
+            with trio.move_on_after(KEEPALIVE_SECONDS):
+                command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
                 for index, begin, length in data:
                     raw_msg = bytes([messages.PeerMsg.REQUEST])
@@ -223,9 +223,9 @@ class PeerEngine(object):
                 await self._peer_stream.send_message(raw_msg)
                 logger.info('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
             elif command == 'keepalive':
-                logger.info('Pre-send KEEPALIVE to {}'.format(data, self._peer_id_and_state[0]))
+                logger.info('Pre-send KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
                 await self._peer_stream.send_keepalive()
-                logger.info('Sent KEEPALIVE to {}'.format(data, self._peer_id_and_state[0]))
+                logger.info('Sent KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
 
             else:
                 logger.warning('PeerEngine for {} received unsupported message: {}'.format(self._peer_id_and_state[0], (command, data)))
