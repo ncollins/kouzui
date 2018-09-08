@@ -191,8 +191,8 @@ class Engine(object):
         elif msg_type == messages.PeerMsg.NOT_INTERESTED:
             logger.warning('Received NOT_INTERESTED from {} (not implemented)'.format(peer_id)) # TODO
         elif msg_type == messages.PeerMsg.HAVE:
-            logger.debug('Received HAVE from {}'.format(peer_id))
             index: int = messages.parse_have(msg_payload)
+            logger.debug('Received HAVE {} from {}'.format(index, peer_id))
             peer_state.get_pieces()[index] = True
         elif msg_type == messages.PeerMsg.BITFIELD:
             logger.info('Received BITFIELD from {}'.format(peer_id))
@@ -203,7 +203,11 @@ class Engine(object):
             incStats('requests_in')
             request_info: Tuple[int,int,int] = messages.parse_request_or_cancel(msg_payload)
             logger.info('Received REQUEST from {} from {}'.format(request_info, peer_state.peer_id))
-            await self._blocks_to_read.put((peer_state.peer_id, request_info))
+            index = request_info[0]
+            if self._state._complete[index]:
+                await self._blocks_to_read.put((peer_state.peer_id, request_info))
+            else:
+                logger.warning('{} requested {} but piece is incomplete'.format(peer_state.peer_id, index))
         elif msg_type == messages.PeerMsg.PIECE:
             (index, begin, data) = messages.parse_piece(msg_payload)
             incStats('blocks_in')
@@ -245,9 +249,9 @@ class Engine(object):
     async def peer_messages_loop(self):
         while True:
             logging.info('peer_messages_loop')
-            peer_state, msg_type, msg_payload = await self._msg_from_peer.get() 
+            peer_state, msg_type, msg_payload = await self._msg_from_peer.get() # TODO should use peer_id
             logger.debug('Engine: recieved peer message')
-            await self.handle_peer_message(peer_state.peer_id, msg_type, msg_payload)
+            await self.handle_peer_message(peer_state.peer_id, msg_type, msg_payload)# TODO should use peer_id
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index):

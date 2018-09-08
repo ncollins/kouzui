@@ -60,12 +60,16 @@ class PeerStream(object):
             if (msg_length is not None) and len(self._msg_data) >= msg_length:
                 msg = self._msg_data[:msg_length]
                 self._msg_data = self._msg_data[msg_length:]
+                logger.debug('Returning message of length {} from {}'.format(msg_length, self._stream))
                 return (msg_length, msg)
 
     async def send_message(self, msg: bytes) -> None:
         l = len(msg)
         data = l.to_bytes(4, byteorder='big') + msg
+        logger.debug('Pre-send message of length {} on {}'.format(l, self._stream))
         await self._stream.send_all(data)
+        logger.debug('Sent message of length {} on {}'.format(l, self._stream))
+        await trio.sleep(0.01)
 
     async def send_handshake(self, info_hash, peer_id):
         handshake_data =  b'\x13BitTorrent protocol' + (b'\0' * 8) + info_hash + peer_id
@@ -151,10 +155,11 @@ class PeerEngine(object):
         logger.info('Sent handshake to {}'.format(self._peer_address))
 
     async def receiving_loop(self):
+        peer_id = self._peer_id_and_state[0]
         while True:
-            logging.info('receiving_loop')
+            logging.info('receiving_loop for {}'.format(peer_id))
             (length, data) = await self._peer_stream.receive_message()
-            logger.debug('Received message of length {}'.format(length))
+            logger.debug('Received message of length {} from {}'.format(length, peer_id))
             if length == 0:
                 # keepalive message
                 pass
@@ -162,7 +167,7 @@ class PeerEngine(object):
                 msg_type = data[0]
                 msg_payload = data[1:]
                 logger.debug('Putting message in queue for engine')
-                await self._received_queue.put((self._peer_id_and_state[1], msg_type, msg_payload))
+                await self._received_queue.put((self._peer_id_and_state[1], msg_type, msg_payload))# TODO should use peer_id
 
     async def send_bitfield(self):
         raw_pieces = self._tstate._complete # TODO don't use private property
@@ -189,9 +194,9 @@ class PeerEngine(object):
         #logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
-            command, data = 'keepalive', None
-            with trio.move_on_after(KEEPALIVE_SECONDS):
-                command, data = await self._to_send_queue.get()
+            #command, data = 'keepalive', None
+            #with trio.move_on_after(KEEPALIVE_SECONDS):
+            command, data = await self._to_send_queue.get()
             if command == 'blocks_to_request':
                 for index, begin, length in data:
                     raw_msg = bytes([messages.PeerMsg.REQUEST])
@@ -248,8 +253,11 @@ def make_handler(engine):
 
 async def make_standalone(engine, peer_address):
     logger.debug('Starting outgoing peer connection to {}'.format(peer_address))
+    stream = None
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
         await start_peer_engine(engine, peer_address, stream, initiate=True)
     except Exception as e: # TODO this might be too general
         logger.warning('Failed to maintain peer connection to {} because of {}'.format(peer_address, e))
+        if stream:
+            await stream.aclose()
