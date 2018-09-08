@@ -269,7 +269,6 @@ class Engine(object):
             self._state._complete[index] = True # TODO remove private property access
             await self.announce_have_piece(index)
             await self.update_peer_requests()
-            # TODO - send "HAVE" message
             logger.info('Have {} pieces of {}, with {} blocks outstanding'.format(sum(self._state._complete), len(self._state._complete), self.requests.size))
             if self._state._num_pieces - 3 < sum(self._state._complete) < self._state._num_pieces:
                 print('Final blocks missing: {}'.format(self.requests._requests))
