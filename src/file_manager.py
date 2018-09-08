@@ -15,14 +15,31 @@ def _create_empty_file(path, size_in_bytes):
 class FileManager(object):
     def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue) -> None:
         self._torrent = torrent
-        _create_empty_file(self._torrent.file_path, self._torrent._file_length) # TODO don't read private property
-        self._file = open(self._torrent.file_path, 'rb+')
         self._pieces_to_write = pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
+        self._file = None
+
+    def create_file_or_return_hashes(self):
+        try:
+            self._file = open(self._torrent.file_path, 'rb')
+            hashes = []
+            for i, _ in enumerate(self._torrent._complete):
+                l = self._torrent.piece_length(i)
+                p = self.read_block(i, 0, l)
+                h = hashlib.sha1(p).digest()
+                hashes.append(h)
+            self._file.close()
+        except FileNotFoundError:
+            _create_empty_file(self._torrent.file_path, self._torrent._file_length) # TODO don't read private property
+            hashes = None
+        self._file = open(self._torrent.file_path, 'rb+')
+        return hashes
 
     async def run(self):
+        if self._file is None:
+            raise Exception('FileManger must be initialised by calling `create_file_or_return_hashes` before `run`')
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self.piece_writing_loop)
             nursery.start_soon(self.block_reading_loop)

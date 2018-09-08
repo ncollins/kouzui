@@ -49,12 +49,20 @@ class Engine(object):
         # data received but not written to disk
         self._received_blocks: Dict[int, Set[Tuple[int,bytes]]] = dict()
         self.requests = requests.RequestManager()
+        # create FileManager and check hashes if file already exists
         self.file_manager = file_manager.FileManager(self._state
                 , self._complete_pieces_to_write
                 , self._write_confirmations
                 , self._blocks_to_read 
                 , self._blocks_for_peers
                 )
+        existing_hashes = self.file_manager.create_file_or_return_hashes()
+        if existing_hashes:
+            for index, h in enumerate(existing_hashes):
+                piece_info = self._state.piece_info(index)
+                if piece_info.sha1hash == h:
+                    self._state._complete[index] = True
+
 
     @property
     def msg_from_peer(self) -> trio.Queue:
