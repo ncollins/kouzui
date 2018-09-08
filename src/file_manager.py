@@ -30,7 +30,7 @@ class FileManager(object):
     async def piece_writing_loop(self):
         while True:
             index, piece = await self._pieces_to_write.get()
-            await self.write_piece(index, piece)
+            self.write_piece(index, piece)
             logger.info('Wrote #{} to disk'.format(index))
             await self._write_confirmations.put(index)
         
@@ -38,17 +38,17 @@ class FileManager(object):
         while True:
             who, (index, begin, length) = await self._blocks_to_read.get()
             logger.info('Received read request: {} for {}'.format((index, begin, length), who))
-            block = await self.read_block(index, begin, length)
+            block = self.read_block(index, begin, length)
             logger.info('Sending block back: {} for {}'.format((index, begin, length), who))
             await self._blocks_for_peers.put((who, (index, begin, length), block))
 
-    async def write_piece(self, index: int, piece: bytes) -> None:
+    def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length # TODO
         self._file.seek(start)
         self._file.write(piece)
         self._file.flush()
 
-    async def read_block(self, index: int, begin: int, length: int) -> bytes:
+    def read_block(self, index: int, begin: int, length: int) -> bytes:
         start = index * self._torrent._piece_length + begin
         self._file.seek(start)
         block = self._file.read(length)
