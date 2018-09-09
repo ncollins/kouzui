@@ -57,7 +57,7 @@ class FileManager(object):
         while True:
             who, (index, begin, length) = await self._blocks_to_read.get()
             block = self.read_block(index, begin, length)
-            logger.debug('Read block {} for {}, sha1 = {}'.format((index, begin, length), who, hashlib.sha1(block).digest()))
+            #logger.debug('Read block {} for {}, sha1 = {}'.format((index, begin, length), who, hashlib.sha1(block).digest()))
             await self._blocks_for_peers.put((who, (index, begin, length), block))
 
     def write_piece(self, index: int, piece: bytes) -> None:
