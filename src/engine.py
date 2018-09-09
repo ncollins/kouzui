@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import io
 import logging
+import math
 import random 
 from typing import List, Dict, Tuple, Set
 
@@ -47,7 +48,7 @@ class Engine(object):
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: Dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
-        self._received_blocks: Dict[int, Set[Tuple[int,bytes]]] = dict()
+        self._received_blocks: Dict[int, Tuple[bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
         # create FileManager and check hashes if file already exists
         self.file_manager = file_manager.FileManager(self._state
@@ -239,22 +240,23 @@ class Engine(object):
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
-            self._received_blocks[index] = set()
-        blocks_set = self._received_blocks[index]
-        blocks_set.add((begin, data))
-        blocks = sorted(blocks_set)
-        piece_data = b''
-        for offset, block_data in blocks:
-            logger.debug('Received block {}, sha1 = {}'.format((index,offset, len(block_data)), hashlib.sha1(block_data).digest()))
-            if offset == len(piece_data):
-                piece_data = piece_data + block_data
-            else:
-                break
-        piece_info = self._state.piece_info(index)
-        if len(piece_data) == self._state.piece_length(index):
-            if hashlib.sha1(piece_data).digest() == piece_info.sha1hash:
+            piece_length = self._state.piece_length(index)
+            completed_blocks = bitarray.bitarray(math.ceil(piece_length/config.BLOCK_SIZE))
+            completed_blocks.setall(False)
+            piece_data = bytearray(piece_length)
+            self._received_blocks[index] = (completed_blocks, piece_data)
+        else:
+            completed_blocks = self._received_blocks[index][0]
+            piece_data = self._received_blocks[index][1]
+        block_index = begin // config.BLOCK_SIZE
+        completed_blocks[block_index] = True
+        piece_data[begin:begin+len(data)] = data
+        if completed_blocks.all():
+            piece_info = self._state.piece_info(index)
+            complete_piece = bytes(piece_data)
+            if hashlib.sha1(complete_piece).digest() == piece_info.sha1hash:
                 self._received_blocks.pop(index) # TODO is this ordering significant?
-                await self._complete_pieces_to_write.put((index, piece_data))
+                await self._complete_pieces_to_write.put((index, complete_piece))
             else:
                 self._received_blocks.pop(index)
                 self.requests.delete_all_for_piece(index)
