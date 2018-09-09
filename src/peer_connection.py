@@ -74,7 +74,6 @@ class PeerStream(object):
         logger.debug('Pre-send message of length {} on {}'.format(l, self._stream))
         await self._stream.send_all(data)
         logger.debug('Sent message of length {} on {}'.format(l, self._stream))
-        await trio.sleep(0.01)
 
     async def send_handshake(self, info_hash, peer_id):
         handshake_data =  b'\x13BitTorrent protocol' + (b'\0' * 8) + info_hash + peer_id
@@ -193,7 +192,6 @@ class PeerEngine(object):
         logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
-        await trio.sleep(0.2) # TODO :(
         await self.send_unchoke()
         logger.info('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
         #await self.send_interested()
@@ -212,7 +210,6 @@ class PeerEngine(object):
                     logger.info('Pre-send REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
                     await self._peer_stream.send_message(raw_msg)
                     logger.info('Sent REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
-                    await trio.sleep(0.1) # TODO find while this helps, and make it more robust
             elif command == 'block_to_upload':
                 (index, begin, length), block_data = data
                 raw_msg = bytes([messages.PeerMsg.PIECE])
