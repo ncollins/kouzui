@@ -170,15 +170,15 @@ class Engine(object):
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
             indexes = [i for i, b in enumerate(targets) if b]
-            random.shuffle(indexes)
-            logger.info('{}: self any? {}, peer any? {}, indexes[:5] = {}'.format(address, self._state._complete.any(), peer_state._pieces.any(), indexes[:5]))
             if indexes:
+                target_index = random.choice(indexes)
+                logger.info('{}: self any? {}, peer any? {}, target_index = {}'.format(address, self._state._complete.any(), peer_state._pieces.any(), target_index))
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
                     logger.info('{}: Not making new requests: {} existing'.format(address, len(existing_requests)))
                     new_requests = set()
                 else:
-                    suggested_requests = self._blocks_from_index(indexes[0])
+                    suggested_requests = self._blocks_from_index(target_index)
                     new_requests = suggested_requests.difference(existing_requests)
                     logger.info('{}: {} suggested requests, {} existing'.format(address, len(suggested_requests), len(existing_requests)))
                 logger.info('{}: new_requests = {}'.format(address, new_requests))
@@ -187,6 +187,9 @@ class Engine(object):
                         self.requests.add_request(address, r)
                         incStats('requests_out')
                     await peer_state.to_send_queue.put(("blocks_to_request", new_requests))
+            else:
+                logger.info('No target pieces for {}'.format(address))
+
 
     async def handle_peer_message(self, peer_id, msg_type, msg_payload):
         if peer_id not in self._peers:
