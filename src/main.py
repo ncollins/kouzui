@@ -31,7 +31,7 @@ def main():
     if True:
         with open(args.torrent_path, 'rb') as f:
             raw = f.read()
-            logger.info("info_string matches {}".format(torrent_info in raw))
+            logger.debug("info_string matches {}".format(torrent_info in raw))
 
     output_dir = args.output_dir if args.output_dir else os.path.dirname(os.path.abspath(__file__))
     

@@ -29,7 +29,7 @@ stats = { 'requests_in': 0
 
 def incStats(field):
     stats[field] += 1
-    logger.info('STATS {}'.format(stats))
+    logger.debug('stats updated: {}'.format(stats))
 
 
 class Engine(object):
@@ -82,13 +82,17 @@ class Engine(object):
     async def info_loop(self):
         while True:
             await trio.sleep(4)
-            logging.info('info_loop --------------')
             unwritten_blocks = len(self._received_blocks.items())
             outstanding_requests = self.requests.size
-            logging.info('stats = {}'.format(stats))
-            logging.info('{} unwritten blocks, {} outstanding_requests, {}/{} complete pieces'.format(unwritten_blocks, outstanding_requests, sum(self._state._complete), len(self._state._complete)))
-            if len(self._state._complete) - sum(self._state._complete) < 2:
-                logging.info('Outstanding requests = {}'.format(self.requests._requests))
+            logger.info('stats = {}'.format(stats))
+            logger.info('{} unwritten blocks, {} outstanding_requests, {}/{} complete pieces'.format(unwritten_blocks, outstanding_requests, sum(self._state._complete), len(self._state._complete)))
+            if sum(self._state._complete) - len(self._state._complete) - sum(self._state._complete) > 0.97:
+                logger.info('Outstanding requests = {}'.format(self.requests._requests))
+                unwritten_blocks = [(i,b, len(data))
+                        for i, blocks in self._received_blocks.items()
+                        for b, data in blocks
+                        ]
+                logger.info('Unwritten blocks: {}'.format(unwritten_blocks))
             queues = [
                     self._peers_without_connection
                     , self._complete_pieces_to_write
@@ -97,13 +101,13 @@ class Engine(object):
                     , self._blocks_for_peers
                     , self._msg_from_peer
                     ]
-            logging.info('Queue lengths {}'.format([q.statistics() for q in queues]))
-            logging.info('Alive peers {}'.format(self._peers.keys()))
+            logger.info('Queues  {}'.format([q.statistics() for q in queues]))
+            logger.info('Alive peers {}'.format(self._peers.keys()))
 
     async def tracker_loop(self):
         new = True
         while True:
-            logging.info('tracker_loop')
+            logger.debug('tracker_loop')
             start_time = trio.current_time()
             event = b'started' if new else None
             raw_tracker_info = await tracker.query(self._state, event)
@@ -112,7 +116,7 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b'peers'], self._state)
             peers = [(peer_state.PeerAddress(ip, port), peer_id) for ip, port, peer_id in peer_ips_and_ports]
-            logger.debug('Found peers from tracker: {}'.format(peers))
+            logger.info('Found peers from tracker: {}'.format(peers))
             await self.update_peers(peers)
             # update other info: 
             #self._state.complete_peers = tracker_info['complete']
@@ -129,10 +133,10 @@ class Engine(object):
         '''
         Start up clients for new peers that are not from the serve.
         '''
-        logger.debug('Peer client loop!!!')
+        logger.debug('starting peer_clients_loop')
         async with trio.open_nursery() as nursery:
             while True:
-                logging.info('peer_clients_loop')
+                logger.debug('peer_clients_loop')
                 address = await self._peers_without_connection.get()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
@@ -154,29 +158,30 @@ class Engine(object):
     async def update_peer_requests(self):
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
-        logger.info('`update_peer_requests`')
         if self._state._complete.all():
             logger.info('Not making new requests, download is complete')
+            return
+        if not self._peers:
+            logger.info('Not making new requests as there are no peers')
             return
         for address, peer_state in self._peers.items():
             if peer_state.is_choked:
                 continue
-            logger.info('`update_peer_requests` peer_id = {}'.format(address))
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
             indexes = [i for i, b in enumerate(targets) if b]
             random.shuffle(indexes)
-            logger.info('`update_peer_requests` indexes[:5] = {}, self any? {}, peer any? {}'.format(indexes, self._state._complete.any(), peer_state._pieces.any()))
+            logger.info('{}: self any? {}, peer any? {}, indexes[:5] = {}'.format(address, self._state._complete.any(), peer_state._pieces.any(), indexes[:5]))
             if indexes:
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
-                    logger.info('Not making new requests: # existing for peer <{}> = {}'.format(address, len(existing_requests)))
+                    logger.info('{}: Not making new requests: {} existing'.format(address, len(existing_requests)))
                     new_requests = set()
                 else:
                     suggested_requests = self._blocks_from_index(indexes[0])
                     new_requests = suggested_requests.difference(existing_requests)
-                    logger.info('# suggested requests = {}, # existing for peer <{}> = {}'.format(len(suggested_requests), address, len(existing_requests)))
-                logger.info('Blocks to request: {}'.format(new_requests))
+                    logger.info('{}: {} suggested requests, {} existing'.format(address, len(suggested_requests), len(existing_requests)))
+                logger.info('{}: new_requests = {}'.format(address, new_requests))
                 if new_requests:
                     for r in new_requests:
                         self.requests.add_request(address, r)
@@ -185,7 +190,7 @@ class Engine(object):
 
     async def handle_peer_message(self, peer_id, msg_type, msg_payload):
         if peer_id not in self._peers:
-            logging.info('did not handle message because peer {} no longer exists'.format(peer_id))
+            logger.info('did not handle message because peer {} no longer exists'.format(peer_id))
             return
         peer_state = self._peers[peer_id]
         if msg_type == messages.PeerMsg.CHOKE:
@@ -225,8 +230,8 @@ class Engine(object):
             request_info = messages.parse_request_or_cancel(msg_payload)
         else:
             # TODO - Exceptions are bad here! Should this be assert false?
-            logger.debug('Bad message: length = {}'.format(length))
-            logger.debug('Bad message: data = {}'.format(data))
+            logger.warning('Bad message: length = {}'.format(length))
+            logger.warning('Bad message: data = {}'.format(data))
             raise Exception('bad peer message')
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
@@ -237,7 +242,7 @@ class Engine(object):
         blocks = sorted(blocks_set)
         piece_data = b''
         for offset, block_data in blocks:
-            logging.info('Received sha1 {}: {}'.format((index,offset), hashlib.sha1(block_data).digest()))
+            logger.debug('Received block {}, sha1 = {}'.format((index,offset, len(block_data)), hashlib.sha1(block_data).digest()))
             if offset == len(piece_data):
                 piece_data = piece_data + block_data
             else:
@@ -254,9 +259,9 @@ class Engine(object):
 
     async def peer_messages_loop(self):
         while True:
-            logging.info('peer_messages_loop')
+            logger.debug('peer_messages_loop')
             peer_state, msg_type, msg_payload = await self._msg_from_peer.get() # TODO should use peer_id
-            logger.debug('Engine: recieved peer message')
+            logger.debug('Engine recieved peer message from {}'.format(peer_state.peer_id))
             await self.handle_peer_message(peer_state.peer_id, msg_type, msg_payload)# TODO should use peer_id
             await self.update_peer_requests()
 
@@ -267,7 +272,7 @@ class Engine(object):
 
     async def file_write_confirmation_loop(self):
         while True:
-            logging.info('file_write_confirmation_loop')
+            logger.debug('file_write_confirmation_loop')
             index = await self._write_confirmations.get()
             self.requests.delete_all_for_piece(index)
             # NB - update the _complete vector first to guarantee that new clients get
@@ -275,25 +280,17 @@ class Engine(object):
             self._state._complete[index] = True # TODO remove private property access
             await self.announce_have_piece(index)
             await self.update_peer_requests()
-            logger.info('Have {} pieces of {}, with {} blocks outstanding'.format(sum(self._state._complete), len(self._state._complete), self.requests.size))
-            if self._state._num_pieces - 3 < sum(self._state._complete) < self._state._num_pieces:
-                print('Final blocks missing: {}'.format(self.requests._requests))
-                unwritten_blocks = [(i,b, len(data))
-                        for i, blocks in self._received_blocks.items()
-                        for b, data in blocks
-                        ]
-                print('Unwritten blocks: {}'.format(unwritten_blocks))
 
     async def file_reading_loop(self):
         while True:
-            logging.info('file_reading_loop')
+            logger.debug('file_reading_loop')
             peer_id, block_details, block = await self._blocks_for_peers.get()
             incStats('blocks_out')
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
                 await p_state.to_send_queue.put(('block_to_upload', (block_details, block)))
             else:
-                logging.info('dropped block {} for {} because peer no longer exists'.format(block_details, peer_id))
+                logger.info('dropped block {} for {} because peer no longer exists'.format(block_details, peer_id))
 
 
 def run(torrent):

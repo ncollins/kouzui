@@ -161,7 +161,7 @@ class PeerEngine(object):
     async def receiving_loop(self):
         peer_id = self._peer_id_and_state[0]
         while True:
-            logging.info('receiving_loop for {}'.format(peer_id))
+            logging.debug('receiving_loop for {}'.format(peer_id))
             messages = await self._peer_stream.receive_message()
             for length, data in messages:
                 logger.debug('Received message of length {} from {}'.format(length, peer_id))
@@ -197,7 +197,7 @@ class PeerEngine(object):
         #await self.send_interested()
         #logger.debug('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
-            logging.info('sending_loop')
+            logging.debug('sending_loop')
             command, data = 'keepalive', None
             with trio.move_on_after(KEEPALIVE_SECONDS):
                 command, data = await self._to_send_queue.get()

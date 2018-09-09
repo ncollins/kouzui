@@ -55,9 +55,8 @@ class FileManager(object):
     async def block_reading_loop(self):
         while True:
             who, (index, begin, length) = await self._blocks_to_read.get()
-            logger.info('Received read request: {} for {}'.format((index, begin, length), who))
             block = self.read_block(index, begin, length)
-            logger.info('Sending block back: {} for {}'.format((index, begin, length), who))
+            logger.debug('Read block {} for {}, sha1 = {}'.format((index, begin, length), who, hashlib.sha1(block).digest()))
             await self._blocks_for_peers.put((who, (index, begin, length), block))
 
     def write_piece(self, index: int, piece: bytes) -> None:
@@ -70,5 +69,4 @@ class FileManager(object):
         start = index * self._torrent._piece_length + begin
         self._file.seek(start)
         block = self._file.read(length)
-        logging.info('Read sha1 {}: {}'.format((index,begin), hashlib.sha1(block).digest()))
         return block
