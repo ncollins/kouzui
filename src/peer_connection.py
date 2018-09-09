@@ -126,7 +126,7 @@ class PeerEngine(object):
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
-        except Exception as e:
+        except Exception as e: # TODO need to handle MultiError with inherits from BaseException
             if self._peer_id_and_state:
                 self._main_engine._peers.pop(peer_id)
             logger.debug('Closing PeerEngine {} / {} / {}'.format(self._peer_address, self._peer_id_and_state, e))
