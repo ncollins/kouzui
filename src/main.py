@@ -20,7 +20,7 @@ def main():
         log_level = getattr(logging, args.log_level.upper())
     else:
         log_level = getattr(logging, 'WARNING')
-    logfile = 'tmp/{}.log'.format(args.listening_port)
+    logfile = 'tmp/{}.log'.format(args.listening_port) # TODO - directory shouldn't be hardcoded
     logging.basicConfig(filename=logfile, level=log_level, format='%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s')
 
     with open(args.torrent_path, 'rb') as f:
