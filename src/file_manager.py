@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from typing import Any
 
 logger = logging.getLogger('file_manager')
 
@@ -19,7 +20,7 @@ class FileManager(object):
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
-        self._file = None
+        self._file: Any = None
 
     def create_file_or_return_hashes(self):
         try:
