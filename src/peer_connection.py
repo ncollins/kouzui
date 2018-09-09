@@ -129,7 +129,7 @@ class PeerEngine(object):
         except Exception as e:
             if self._peer_id_and_state:
                 self._main_engine._peers.pop(peer_id)
-            logger.info('Closing PeerEngine {} / {} / {}'.format(self._peer_address, self._peer_id_and_state, e))
+            logger.debug('Closing PeerEngine {} / {} / {}'.format(self._peer_address, self._peer_id_and_state, e))
             raise e
 
     async def receive_handshake(self):
@@ -150,13 +150,13 @@ class PeerEngine(object):
         if self._expected_peer_id:
             if not self._expected_peer_id == peer_id:
                 raise HandshakeError('Handshake data: peer_id does not match', peer_id)
-        logger.info('Received handshake from {}/{}'.format(self._peer_address, peer_id))
+        logger.debug('Received handshake from {}/{}'.format(self._peer_address, peer_id))
         return peer_id
 
     async def send_handshake(self):
         # Handshake
         await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
-        logger.info('Sent handshake to {}'.format(self._peer_address))
+        logger.debug('Sent handshake to {}'.format(self._peer_address))
 
     async def receiving_loop(self):
         peer_id = self._peer_id_and_state[0]
@@ -189,13 +189,13 @@ class PeerEngine(object):
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self):
-        logger.info('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
+        logger.debug('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
-        logger.info('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
+        logger.debug('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_unchoke()
-        logger.info('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
+        logger.debug('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
         #await self.send_interested()
-        #logger.info('Sent interested to {}'.format(self._peer_id_and_state[0]))
+        #logger.debug('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.info('sending_loop')
             command, data = 'keepalive', None
@@ -207,31 +207,30 @@ class PeerEngine(object):
                     raw_msg += (index).to_bytes(4, byteorder='big')
                     raw_msg += (begin).to_bytes(4, byteorder='big')
                     raw_msg += (length).to_bytes(4, byteorder='big')
-                    logger.info('Pre-send REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                    logger.debug('Pre-send REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
                     await self._peer_stream.send_message(raw_msg)
-                    logger.info('Sent REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                    logger.debug('Sent REQUEST for {} from {}'.format((index, begin, length), self._peer_id_and_state[0]))
             elif command == 'block_to_upload':
                 (index, begin, length), block_data = data
                 raw_msg = bytes([messages.PeerMsg.PIECE])
                 raw_msg += (index).to_bytes(4, byteorder='big')
                 raw_msg += (begin).to_bytes(4, byteorder='big')
                 raw_msg += block_data
-                logger.info('Pre-send PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                logger.debug('Pre-send PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
-                logger.info('Sent PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
+                logger.debug('Sent PIECE {} to {}'.format((index, begin, length), self._peer_id_and_state[0]))
             elif command == 'announce_have_piece':
                 raw_msg = bytes([messages.PeerMsg.HAVE])
                 raw_msg += (data).to_bytes(4, byteorder='big')
-                logger.info('Pre-send HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+                logger.debug('Pre-send HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
-                logger.info('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+                logger.debug('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
             elif command == 'keepalive':
-                logger.info('Pre-send KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
+                logger.debug('Pre-send KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
                 await self._peer_stream.send_keepalive()
-                logger.info('Sent KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
-
+                logger.debug('Sent KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
             else:
-                logger.warning('PeerEngine for {} received unsupported message: {}'.format(self._peer_id_and_state[0], (command, data)))
+                logger.warning('PeerEngine for {} received unsupported message from Engine: {}'.format(self._peer_id_and_state[0], (command, data)))
 
 
 async def start_peer_engine(engine, peer_address, stream, initiate=True):
