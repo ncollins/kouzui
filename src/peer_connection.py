@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Tuple, List
 
 import bitarray
 import trio
@@ -37,31 +37,36 @@ class PeerStream(object):
         logger.debug('Final incoming handshake data {}'.format(data))
         return handshake_data
 
-    async def receive_message(self) -> Tuple[int, bytes]:
-        logger.debug('Called receive_message for {}'.format(self._stream))
-        msg_length = None # self._msg_data persists between calls but msg_length resets each time
+    def _parse_msg_data(self) -> List[Tuple[int, bytes]]:
+        messages : List[Tuple[int,bytes]] = []
+        msg_length = None
         while True:
-            data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
-            #logging.info('received_message')
-            if data != b'':
-                logger.debug('received_message: Got peer data, first 10 bytes: {} from {}'.format(data[:10], self._stream))
+            total_length = len(self._msg_data)
+            if total_length < 4:
+                return messages
             else:
-                logger.debug('empty data, about to raise EOF from {}'.format(self._stream))
-                raise Exception('EOF')
-            self._msg_data += data
-            # 1) see if we have enough to get message length, if not continue
-            if msg_length is None and len(self._msg_data) < 4:
-                continue
-            # 2) get message length if we don't yet have it
-            if msg_length is None:
                 msg_length = int.from_bytes(self._msg_data[:4], byteorder='big')
-                self._msg_data = self._msg_data[4:]
-            # 3) get data if possible
-            if (msg_length is not None) and len(self._msg_data) >= msg_length:
-                msg = self._msg_data[:msg_length]
-                self._msg_data = self._msg_data[msg_length:]
-                logger.debug('Returning message of length {} from {}'.format(msg_length, self._stream))
-                return (msg_length, msg)
+                if total_length < 4 + msg_length:
+                    return messages
+                else:
+                    messages.append((msg_length, self._msg_data[4:4+msg_length]))
+                    self._msg_data = self._msg_data[4+msg_length:]
+                    logger.debug('Parsed message of length {} from {}'.format(msg_length, self._stream))
+
+    async def receive_message(self) -> List[Tuple[int, bytes]]:
+        logger.debug('Called receive_message for {}'.format(self._stream))
+        while True:
+            messages = self._parse_msg_data()
+            if messages:
+                return messages
+            else:
+                data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+                if data != b'':
+                    logger.debug('received_message: Got {} from {}'.format(len(data), self._stream))
+                else:
+                    logger.debug('empty data, about to raise EOF from {}'.format(self._stream))
+                    raise Exception('EOF')
+                self._msg_data += data
 
     async def send_message(self, msg: bytes) -> None:
         l = len(msg)
@@ -158,16 +163,17 @@ class PeerEngine(object):
         peer_id = self._peer_id_and_state[0]
         while True:
             logging.info('receiving_loop for {}'.format(peer_id))
-            (length, data) = await self._peer_stream.receive_message()
-            logger.debug('Received message of length {} from {}'.format(length, peer_id))
-            if length == 0:
-                # keepalive message
-                pass
-            else:
-                msg_type = data[0]
-                msg_payload = data[1:]
-                logger.debug('Putting message in queue for engine')
-                await self._received_queue.put((self._peer_id_and_state[1], msg_type, msg_payload))# TODO should use peer_id
+            messages = await self._peer_stream.receive_message()
+            for length, data in messages:
+                logger.debug('Received message of length {} from {}'.format(length, peer_id))
+                if length == 0:
+                    # keepalive message
+                    pass
+                else:
+                    msg_type = data[0]
+                    msg_payload = data[1:]
+                    logger.debug('Putting message in queue for engine')
+                    await self._received_queue.put((self._peer_id_and_state[1], msg_type, msg_payload))# TODO should use peer_id
 
     async def send_bitfield(self):
         raw_pieces = self._tstate._complete # TODO don't use private property
