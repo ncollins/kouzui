@@ -8,10 +8,11 @@ import trio
 
 import torrent as tstate
 
-def _create_empty_file(path, size_in_bytes):
+def _create_empty_file(path, torrent):
     with open(path, 'wb') as f:
-        for i in range(size_in_bytes):
-            f.write(b'\x00')
+        for i in range(torrent._num_pieces): # TODO remove private property access
+            b = bytes(torrent.piece_length(i))
+            f.write(b)
 
 class FileManager(object):
     def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue) -> None:
@@ -33,7 +34,7 @@ class FileManager(object):
                 hashes.append(h)
             self._file.close()
         except FileNotFoundError:
-            _create_empty_file(self._torrent.file_path, self._torrent._file_length) # TODO don't read private property
+            _create_empty_file(self._torrent.file_path, self._torrent) # TODO don't read private property
             hashes = None
         self._file = open(self._torrent.file_path, 'rb+')
         return hashes
