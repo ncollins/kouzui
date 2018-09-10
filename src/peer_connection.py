@@ -126,18 +126,18 @@ class PeerEngine(object):
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
-        except Exception:
+        except Exception as e:
             if self._peer_id_and_state:
                 self._main_engine._peers.pop(peer_id)
             logger.exception('Exception raised in PeerEngine')
             logger.info('Closing PeerEngine {} / {}'.format(self._peer_address, self._peer_id_and_state))
             raise e
-        except MultiError:
+        except trio.MultiError:
             if self._peer_id_and_state:
                 self._main_engine._peers.pop(peer_id)
             logger.exception('MultiError raised in PeerEngine')
             logger.info('Closing PeerEngine {} / {}'.format(self._peer_address, self._peer_id_and_state))
-            raise Exception('MultiError was raised by PeerEngine')
+            raise Exception('trio.MultiError was raised by PeerEngine')
 
     async def receive_handshake(self):
         # First, receive handshake
