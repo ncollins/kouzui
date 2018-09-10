@@ -80,6 +80,7 @@ class Engine(object):
             nursery.start_soon(self.file_reading_loop)
             nursery.start_soon(self.info_loop)
             nursery.start_soon(self.choking_loop)
+            nursery.start_soon(self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS)
 
     async def info_loop(self):
         while True:
@@ -335,6 +336,12 @@ class Engine(object):
                         await p_state.to_send_queue.put(('choke',None))
             # update period
             period = (period + 1) % 3 # rotate period every 30 seconds
+
+    async def delete_stale_requests_loop(self,seconds):
+        while True:
+            await trio.sleep(seconds)
+            count = self.requests.delete_older_than(seconds=seconds)
+            logging.info('Deleted {} stale requests (older than {} seconds)'.format(count, seconds))
 
 
 def run(torrent):
