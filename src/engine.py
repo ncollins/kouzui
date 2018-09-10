@@ -320,14 +320,14 @@ class Engine(object):
                 unchoke.add(optimistic_unchoke)
                 choke.discard(optimistic_unchoke)
             for p_id in unchoke:
-                if p_d in self._peers: # protect against state change while putting in queue
+                if p_id in self._peers: # protect against state change while putting in queue
                     p_state = self._peers[p_id]
                     alert = p_state.unchoke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
                         await p_state.to_send_queue.put(('unchoke',None))
             for p_id in choke:
-                if p_d in self._peers: # protect against state change while putting in queue
+                if p_id in self._peers: # protect against state change while putting in queue
                     p_state = self._peers[p_id]
                     alert = p_state.choke_them()
                     p_state.reset_rolling_download_count()
