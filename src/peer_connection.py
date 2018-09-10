@@ -187,9 +187,9 @@ class PeerEngine(object):
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
-    #async def send_interested(self):
-    #    raw_msg = bytes([messages.PeerMsg.INTERESTED])
-    #    await self._peer_stream.send_message(raw_msg)
+    async def send_choke(self):
+        raw_msg = bytes([messages.PeerMsg.CHOKE])
+        await self._peer_stream.send_message(raw_msg)
 
     async def send_unchoke(self):
         raw_msg = bytes([messages.PeerMsg.UNCHOKE])
@@ -199,10 +199,6 @@ class PeerEngine(object):
         logger.debug('About to send bitfield to {}'.format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.debug('Sent bitfield to {}'.format(self._peer_id_and_state[0]))
-        await self.send_unchoke()
-        logger.debug('Sent unchoke to {}'.format(self._peer_id_and_state[0]))
-        #await self.send_interested()
-        #logger.debug('Sent interested to {}'.format(self._peer_id_and_state[0]))
         while True:
             logging.debug('sending_loop')
             command, data = 'keepalive', None
@@ -232,10 +228,19 @@ class PeerEngine(object):
                 logger.debug('Pre-send HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
                 logger.debug('Sent HAVE {} to {}'.format(data, self._peer_id_and_state[0]))
+            elif command == 'choke':
+                logger.debug('Pre-send CHOKE to {}'.format(self._peer_id_and_state[0]))
+                await self.send_choke()
+                logger.debug('Sent CHOKE to {}'.format(self._peer_id_and_state[0]))
+            elif command == 'unchoke':
+                logger.debug('Pre-send UNCHOKE to {}'.format(self._peer_id_and_state[0]))
+                await self.send_unchoke()
+                logger.debug('Sent UNCHOKE to {}'.format(self._peer_id_and_state[0]))
             elif command == 'keepalive':
                 logger.debug('Pre-send KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
                 await self._peer_stream.send_keepalive()
                 logger.debug('Sent KEEPALIVE to {}'.format(self._peer_id_and_state[0]))
+
             else:
                 logger.warning('PeerEngine for {} received unsupported message from Engine: {}'.format(self._peer_id_and_state[0], (command, data)))
 

@@ -79,6 +79,7 @@ class Engine(object):
             nursery.start_soon(self.file_manager.run)
             nursery.start_soon(self.file_reading_loop)
             nursery.start_soon(self.info_loop)
+            nursery.start_soon(self.choking_loop)
 
     async def info_loop(self):
         while True:
@@ -166,7 +167,7 @@ class Engine(object):
             logger.info('Not making new requests as there are no peers')
             return
         for address, peer_state in self._peers.items():
-            if peer_state.is_choked:
+            if peer_state.is_client_choked:
                 continue
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
@@ -199,10 +200,10 @@ class Engine(object):
         peer_state = self._peers[peer_id]
         if msg_type == messages.PeerMsg.CHOKE:
             logger.info('Received CHOKE from {}'.format(peer_id))
-            peer_state.choke()
+            peer_state.choke_us()
         elif msg_type == messages.PeerMsg.UNCHOKE:
             logger.info('Received UNCHOKE from {}'.format(peer_id))
-            peer_state.unchoke()
+            peer_state.unchoke_us()
         elif msg_type == messages.PeerMsg.INTERESTED:
             logger.warning('Received INTERESTED from {} (not implemented)'.format(peer_id)) # TODO
         elif msg_type == messages.PeerMsg.NOT_INTERESTED:
@@ -220,7 +221,9 @@ class Engine(object):
             request_info: Tuple[int,int,int] = messages.parse_request_or_cancel(msg_payload)
             logger.info('Received REQUEST from {} from {}'.format(request_info, peer_state.peer_id))
             index = request_info[0]
-            if self._state._complete[index]:
+            if peer_state.is_peer_choked:
+                logger.warning('{} requested {} but peer is choked'.format(peer_state.peer_id, index))
+            elif self._state._complete[index]:
                 await self._blocks_to_read.put((peer_state.peer_id, request_info))
             else:
                 logger.warning('{} requested {} but piece is incomplete'.format(peer_state.peer_id, index))
@@ -228,6 +231,7 @@ class Engine(object):
             (index, begin, data) = messages.parse_piece(msg_payload)
             incStats('blocks_in')
             logger.info('Received block {} from {}'.format((index, begin, len(data)), peer_state.peer_id))
+            peer_state.inc_download_counters()
             await self.handle_block_received(index, begin, data)
         elif msg_type == messages.PeerMsg.CANCEL:
             logger.warning('Received CANCEL from {} (not implemented)'.format(peer_id)) # TODO
@@ -296,6 +300,38 @@ class Engine(object):
                 await p_state.to_send_queue.put(('block_to_upload', (block_details, block)))
             else:
                 logger.info('dropped block {} for {} because peer no longer exists'.format(block_details, peer_id))
+
+    async def choking_loop(self):
+        period = 0
+        optimistic_unchoke = None
+        while True:
+            await trio.sleep(10)
+            peers =  [ (peer_id, peer_s.get_20_second_rolling_download_count())
+                    for peer_id, peer_s in self._peers.items() ]
+            if period == 0 and peers:
+                optimistic_unchoke = random.choice(peers)[0]
+            peers = sorted(peers, key=lambda x: x[1], reverse=True)
+            # First X are unchoked
+            # Rest are choked
+            unchoke = set(p[0] for p in peers[:config.NUM_UNCHOKED_PEERS])
+            choke = set(p[0] for p in peers[config.NUM_UNCHOKED_PEERS:])
+            if optimistic_unchoke:
+                unchoke.add(optimistic_unchoke)
+                choke.discard(optimistic_unchoke)
+            for p_id in unchoke:
+                p_state = self._peers[p_id]
+                alert = p_state.unchoke_them()
+                p_state.reset_rolling_download_count()
+                if alert == peer_state.ChokeAlert.ALERT:
+                    await p_state.to_send_queue.put(('unchoke',None))
+            for p_id in choke:
+                p_state = self._peers[p_id]
+                alert = p_state.choke_them()
+                p_state.reset_rolling_download_count()
+                if alert == peer_state.ChokeAlert.ALERT:
+                    await p_state.to_send_queue.put(('choke',None))
+            # update period
+            period = (period + 1) % 3 # rotate period every 30 seconds
 
 
 def run(torrent):
