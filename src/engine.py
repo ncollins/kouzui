@@ -311,6 +311,7 @@ class Engine(object):
             if period == 0 and peers:
                 optimistic_unchoke = random.choice(peers)[0]
             peers = sorted(peers, key=lambda x: x[1], reverse=True)
+            logger.info('Peers ordered by successful downloads in last 20 seconds: {}'.format(peers))
             # First X are unchoked
             # Rest are choked
             unchoke = set(p[0] for p in peers[:config.NUM_UNCHOKED_PEERS])
