@@ -10,6 +10,7 @@ import bitarray
 import trio
 
 import bencode
+import display
 import file_manager
 import messages
 import peer_connection
@@ -84,7 +85,6 @@ class Engine(object):
 
     async def info_loop(self):
         while True:
-            await trio.sleep(4)
             unwritten_blocks = len(self._received_blocks.items())
             outstanding_requests = self.requests.size
             logger.info('stats = {}'.format(stats))
@@ -106,6 +106,8 @@ class Engine(object):
                     ]
             logger.info('Queues  {}'.format([q.statistics() for q in queues]))
             logger.info('Alive peers {}'.format(self._peers.keys()))
+            display.print_peers(self._state, self._peers)
+            await trio.sleep(4)
 
     async def tracker_loop(self):
         new = True
@@ -298,6 +300,7 @@ class Engine(object):
             incStats('blocks_out')
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
+                p_state.inc_upload_counters()
                 await p_state.to_send_queue.put(('block_to_upload', (block_details, block)))
             else:
                 logger.info('dropped block {} for {} because peer no longer exists'.format(block_details, peer_id))

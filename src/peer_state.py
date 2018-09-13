@@ -31,6 +31,7 @@ class PeerState(object):
         self._total_download_count = 0
         self._current_10_second_download_count = 0
         self._prev_10_second_download_count = 0
+        self._total_upload_count = 0
 
     def choke_us(self):
         self._choked_us = True
@@ -88,6 +89,9 @@ class PeerState(object):
     def inc_download_counters(self) -> None:
         self._total_download_count += 1
         self._current_10_second_download_count += 1
+
+    def inc_upload_counters(self) -> None:
+        self._total_upload_count += 1
 
     def reset_rolling_download_count(self) -> None:
         self._prev_10_second_download_count = self._current_10_second_download_count
