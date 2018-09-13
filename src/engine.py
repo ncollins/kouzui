@@ -217,6 +217,7 @@ class Engine(object):
             peer_state.get_pieces()[index] = True
         elif msg_type == messages.PeerMsg.BITFIELD:
             logger.info('Received BITFIELD from {}'.format(peer_id))
+            # TODO would be useful to log what percentage of the file the peer has
             bitfield = messages.parse_bitfield(msg_payload)
             peer_state.set_pieces(bitfield)
         elif msg_type == messages.PeerMsg.REQUEST:
