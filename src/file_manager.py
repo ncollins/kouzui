@@ -15,17 +15,18 @@ def _create_empty_file(path, torrent):
             f.write(b)
 
 class FileManager(object):
-    def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue) -> None:
+    def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue, file_suffix='') -> None:
         self._torrent = torrent
         self._pieces_to_write = pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
+        self._file_path = torrent.file_path + file_suffix
         self._file: Any = None
 
     def create_file_or_return_hashes(self):
         try:
-            self._file = open(self._torrent.file_path, 'rb')
+            self._file = open(self._file_path, 'rb')
             hashes = []
             for i, _ in enumerate(self._torrent._complete):
                 l = self._torrent.piece_length(i)
@@ -34,9 +35,9 @@ class FileManager(object):
                 hashes.append(h)
             self._file.close()
         except FileNotFoundError:
-            _create_empty_file(self._torrent.file_path, self._torrent) # TODO don't read private property
+            _create_empty_file(self._file_path, self._torrent) # TODO don't read private property
             hashes = None
-        self._file = open(self._torrent.file_path, 'rb+')
+        self._file = open(self._file_path, 'rb+')
         return hashes
 
     async def run(self):
