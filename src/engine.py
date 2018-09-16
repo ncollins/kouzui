@@ -107,7 +107,7 @@ class Engine(object):
             logger.info('Queues  {}'.format([q.statistics() for q in queues]))
             logger.info('Alive peers {}'.format(self._peers.keys()))
             display.print_peers(self._state, self._peers)
-            await trio.sleep(4)
+            await trio.sleep(1)
 
     async def tracker_loop(self):
         new = True
