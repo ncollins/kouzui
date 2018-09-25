@@ -33,16 +33,16 @@ def run_command(args):
     logfile = 'tmp/{}.log'.format(args.listening_port) # TODO - directory shouldn't be hardcoded
     logging.basicConfig(filename=logfile, level=log_level, format='%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s')
     torrent_data, torrent_info = read_torrent_file(args.torrent_path)
-    output_dir = args.output_dir if args.output_dir else os.path.dirname(os.path.abspath(__file__))
+    download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
     port = int(args.listening_port) if args.listening_port else None
-    t = Torrent(torrent_data, torrent_info, output_dir, port)
+    t = Torrent(torrent_data, torrent_info, download_dir, port)
     engine.run(t)
 
 def make_test_files_command(args):
     print(args)
     torrent_data, torrent_info = read_torrent_file(args.torrent_path)
-    output_dir = args.output_dir if args.output_dir else os.path.dirname(os.path.abspath(__file__))
-    t = Torrent(torrent_data, torrent_info, output_dir, None)
+    download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
+    t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
     dummy_queue = trio.Queue(1)
     main_fm = file_manager.FileManager(t, dummy_queue, dummy_queue, dummy_queue, dummy_queue)
