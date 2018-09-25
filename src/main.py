@@ -63,7 +63,7 @@ def main():
     run = sub_commands.add_parser("run", help="Run Bittorrent client")
     run.add_argument('torrent_path', help='path to the .torrent file')
     run.add_argument('--listening-port', help='listening port for incoming peer connections')
-    run.add_argument('--log-level', help='INFO/DEBUG/WARNING etc.')
+    run.add_argument('--log-level', help='DEBUG/INFO/WARNING')
     run.add_argument('--download-dir', help='directory to save the file in')
     run.set_defaults(func=run_command)
     # make-test-files sub-command ----------
