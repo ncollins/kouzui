@@ -1,10 +1,10 @@
-## Kouzui
+# Kouzui
 
-A Bittorrent client written in Python to learn more about writing concurrent code.
+A Bittorrent client written in Python to learn more about writing concurrent networking code.
 I worked on this while attending [Recurse Center](https://www.recurse.com/) during the summer of 2018.
 It uses the [Trio](https://trio.readthedocs.io) library for concurrent networking.
 
-# Installation and running
+## Installation and running
 
 Kouzui uses the async/await syntax added in Python 3.5, so it will not run on earlier versions of Python.
 It has only been tested with Python 3.6 and Python 3.7, on GNU/Linux (Ubuntu) and Mac OS.
@@ -15,27 +15,30 @@ The `bitarray` module is a C-extension so it may need a C compiler and Python de
 
 It can then be run from the project directory with:
 
-`python src/main.py run path/to/torrent_file.torrent --download-dir path/to/output/directory`
+`python src/main.py run path/to/torrent_file.torrent --download-dir path/to/downloads`
 
-# What it can do
+## What it can do
 
 - Load Torrent information from a .torrent file
 - Get peer information from a traker over the HTTP protocol
 - Connect to multiple peers and concurrently download/upload
 - Check the hashes of received pieces to make sure they are valid
-- Send and receive "HAVE" messages (used update knowledge of which peers have which pieces)
+- Send and receive "HAVE" messages (used to update knowledge of which peers have which pieces)
 - Choke uploads to peers giving poor download rates
 - Resume incomplete downloads
 
-# TODO list
+## TODO list
 
 See the [issues page](https://github.com/ncollins/kouzui/issues).
 
-# Bigger features I'm considering adding
+## Bigger features I'm considering adding
 
 - Rate limiting - I'm currious to see how this might be implemented with Trio.
 
-# Features I don't intend to add
+## Features I don't intend to add
+
+There are a number of features that would be required in a "complete" Bittorrent client,
+but I consider orthogonal to my learning goals for this project, including:
 
 - Support for torrents that contain multiple files
 - Support for magnet links
