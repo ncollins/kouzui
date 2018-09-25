@@ -60,17 +60,17 @@ def main():
     argparser = argparse.ArgumentParser()
     # run sub-command ----------------------
     sub_commands = argparser.add_subparsers(help="sub-commands help")
-    run = sub_commands.add_parser("run", help="Running Bittorrent client")
+    run = sub_commands.add_parser("run", help="Run Bittorrent client")
     run.add_argument('torrent_path', help='path to the .torrent file')
-    run.add_argument('--listening-port', help='path to the .torrent file')
+    run.add_argument('--listening-port', help='listening port for incoming peer connections')
     run.add_argument('--log-level', help='INFO/DEBUG/WARNING etc.')
-    run.add_argument('--output-dir', help='directory to save the file(s) in')
+    run.add_argument('--download-dir', help='directory to save the file in')
     run.set_defaults(func=run_command)
     # make-test-files sub-command ----------
     make_test_files = sub_commands.add_parser("make-test-files", help="Split a complete file into incomplete files for testing")
     make_test_files.add_argument('torrent_path', help='path to the .torrent file')
     make_test_files.add_argument('--number-of-files', help='number of files to create')
-    make_test_files.add_argument('--output-dir', help='directory to save the file(s) in')
+    make_test_files.add_argument('--download-dir', help='directory to find the complete file and save the incomplete files')
     make_test_files.set_defaults(func=make_test_files_command)
     # --------------------------------------
     args = argparser.parse_args()
