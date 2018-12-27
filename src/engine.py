@@ -16,6 +16,7 @@ import messages
 import peer_connection
 import requests
 import peer_state
+import token_bucket
 import torrent as state
 import tracker
 
@@ -65,6 +66,8 @@ class Engine(object):
                 if piece_info.sha1hash == h:
                     self._state._complete[index] = True
 
+        bytes_limit = 1 * 1024 * 1024
+        self.token_bucket = token_bucket.TokenBucket(bytes_limit)
 
     @property
     def msg_from_peer(self) -> trio.Queue:
@@ -82,6 +85,7 @@ class Engine(object):
             nursery.start_soon(self.info_loop)
             nursery.start_soon(self.choking_loop)
             nursery.start_soon(self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS)
+            nursery.start_soon(self.token_bucket.loop)
 
     async def info_loop(self):
         while True:

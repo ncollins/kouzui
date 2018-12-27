@@ -19,9 +19,10 @@ class PeerStream(object):
     is to find the length first and then keep accumulating data
     until it has enough.
     '''
-    def __init__(self, stream):
+    def __init__(self, stream, token_bucket=None):
         self._stream = stream
         self._msg_data = b''
+        self._token_bucket = token_bucket
 
     async def receive_handshake(self):
         logger.debug('Starting to received handshake on {}'.format(self._stream))
@@ -72,6 +73,9 @@ class PeerStream(object):
         l = len(msg)
         data = l.to_bytes(4, byteorder='big') + msg
         logger.debug('Pre-send message of length {} on {}'.format(l, self._stream))
+        while not self._token_bucket.check_and_decrement(len(data)):
+            logger.debug('Token bucket is empty waiting 0.1s')
+            await trio.sleep(0.1)
         await self._stream.send_all(data)
         logger.debug('Sent message of length {} on {}'.format(l, self._stream))
 
@@ -102,7 +106,7 @@ class PeerEngine(object):
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
         self._peer_id_and_state = None
-        self._peer_stream = PeerStream(stream)
+        self._peer_stream = PeerStream(stream, engine.token_bucket)
         self._received_queue = recieved_queue
         self._to_send_queue = None
 
