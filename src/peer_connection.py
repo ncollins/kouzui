@@ -75,7 +75,8 @@ class PeerStream(object):
         logger.debug('Pre-send message of length {} on {}'.format(l, self._stream))
         while not self._token_bucket.check_and_decrement(len(data)):
             logger.debug('Token bucket is empty waiting 0.1s')
-            await trio.sleep(0.1)
+            await trio.sleep(self._token_bucket.update_period)
+        #await self._token_bucket.check_and_wait(len(data))
         await self._stream.send_all(data)
         logger.debug('Sent message of length {} on {}'.format(l, self._stream))
 
