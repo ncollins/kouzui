@@ -36,7 +36,8 @@ def incStats(field):
 
 
 class Engine(object):
-    def __init__(self, torrent: state.Torrent) -> None:
+    def __init__(self, torrent: state.Torrent, auto_shutdown=False) -> None:
+        self._auto_shutdown = auto_shutdown
         self._state = torrent
         # interact with self
         self._peers_without_connection = trio.Queue(config.INTERNAL_QUEUE_SIZE)
@@ -75,6 +76,7 @@ class Engine(object):
 
     async def run(self):
         async with trio.open_nursery() as nursery:
+            nursery.start_soon(self.control_loop)
             nursery.start_soon(self.peer_clients_loop)
             nursery.start_soon(self.peer_server_loop)
             nursery.start_soon(self.tracker_loop)
@@ -86,6 +88,16 @@ class Engine(object):
             nursery.start_soon(self.choking_loop)
             nursery.start_soon(self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS)
             nursery.start_soon(self.token_bucket.loop)
+
+    async def control_loop(self):
+        while True:
+            complete_peers = [ p.get_pieces().all for p in self._peers.values()]
+            if self._auto_shutdown and all(complete_peers) and self._state._complete.all(): # TODO remove private variable access
+                await self.file_manager.move_file_to_final_location()
+                raise KeyboardInterrupt # TODO should use a better exception, or something else entirely
+            elif self._state._complete.all(): # TODO remove private variable access
+                await self.file_manager.move_file_to_final_location()
+            await trio.sleep(10)
 
     async def info_loop(self):
         while True:

@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger('file_manager')
@@ -15,16 +16,30 @@ def _create_empty_file(path, torrent):
             f.write(b)
 
 class FileManager(object):
-    def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue, file_suffix='') -> None:
+    def __init__(self, torrent: tstate.Torrent, pieces_to_write: trio.Queue, write_confirmations: trio.Queue, blocks_to_read: trio.Queue, blocks_for_peers: trio.Queue, file_suffix='.part') -> None:
         self._torrent = torrent
         self._pieces_to_write = pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
-        self._file_path = torrent.file_path + file_suffix
+        self._tmp_path = torrent.file_path + file_suffix
+        self._final_path = torrent.file_path
+        self._file_path = None # torrent.file_path + file_suffix
         self._file: Any = None
 
+    async def move_file_to_final_location(self):
+        if self._file_path != self._final_path:
+            self._file.close()
+            os.rename(self._file_path, self._final_path)
+            logger.info('Moved {} to {}'.format(self._file_path, self._final_path))
+            self._file_path = self._final_path
+            self._file = open(self._file_path, 'rb+')
+
     def create_file_or_return_hashes(self):
+        if os.path.exists(self._final_path):
+            self._file_path = self._final_path
+        else:
+            self._file_path = self._tmp_path
         try:
             self._file = open(self._file_path, 'rb')
             hashes = []
