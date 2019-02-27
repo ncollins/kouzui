@@ -25,29 +25,29 @@ def read_torrent_file(torrent_path):
     #        logger.debug("info_string matches {}".format(torrent_info in raw))
     return (torrent_data, torrent_info)
 
-def run_command(args):
-    if args.log_level:
-        log_level = getattr(logging, args.log_level.upper())
+def run(log_level, torrent_path, listening_port, download_dir):
+    if log_level:
+        log_level = getattr(logging, log_level.upper())
     else:
         log_level = getattr(logging, 'WARNING')
-    logfile = 'tmp/{}.log'.format(args.listening_port) # TODO - directory shouldn't be hardcoded
+    logfile = 'tmp/{}.log'.format(listening_port) # TODO - directory shouldn't be hardcoded
     logging.basicConfig(filename=logfile, level=log_level, format='%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s')
-    torrent_data, torrent_info = read_torrent_file(args.torrent_path)
-    download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
-    port = int(args.listening_port) if args.listening_port else None
+    torrent_data, torrent_info = read_torrent_file(torrent_path)
+    download_dir = download_dir if download_dir else os.path.dirname(os.path.abspath(__file__))
+    port = int(listening_port) if listening_port else None
     t = Torrent(torrent_data, torrent_info, download_dir, port)
     engine.run(t)
 
-def make_test_files_command(args):
-    print(args)
-    torrent_data, torrent_info = read_torrent_file(args.torrent_path)
-    download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
+def run_command(args):
+    run(args.log_level, args.torrent_path, args.listening_port, args.download_dir)
+
+def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
     t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
     dummy_queue = trio.Queue(1)
     main_fm = file_manager.FileManager(t, dummy_queue, dummy_queue, dummy_queue, dummy_queue)
     main_fm.create_file_or_return_hashes()
-    for i in range(int(args.number_of_files)):
+    for i in range(int(number_of_files)):
         fm = file_manager.FileManager(t, dummy_queue, dummy_queue, dummy_queue, dummy_queue, file_suffix='.{}'.format(i))
         fm.create_file_or_return_hashes()
         files.append(fm)
@@ -55,6 +55,13 @@ def make_test_files_command(args):
         data = main_fm.read_block(p.index, 0, t.piece_length(p.index))
         if p.sha1hash == hashlib.sha1(data).digest():
             random.choice(files).write_piece(p.index, data)
+
+def make_test_files_command(args):
+    print(args)
+    torrent_data, torrent_info = read_torrent_file(args.torrent_path)
+    download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
+    number_of_files = args.number_of_files
+    make_test_files(torrent_data, torrent_info, download_dir, number_of_files)
 
 def main():
     argparser = argparse.ArgumentParser()
