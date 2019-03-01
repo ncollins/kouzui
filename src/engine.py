@@ -67,8 +67,10 @@ class Engine(object):
                 if piece_info.sha1hash == h:
                     self._state._complete[index] = True
 
-        bytes_limit = 1 * 1024 * 1024
-        self.token_bucket = token_bucket.TokenBucket(bytes_limit)
+        if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
+            self.token_bucket = token_bucket.NullBucket()
+        else:
+            self.token_bucket = token_bucket.TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
 
     @property
     def msg_from_peer(self) -> trio.Queue:

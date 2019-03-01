@@ -7,6 +7,16 @@ logger = logging.getLogger('token_bucket')
 
 MAXLEN = 100
 
+class NullBucket(object):
+    def __init__(self):
+        pass
+
+    def check_and_decrement(self, _packet_size):
+        return True
+
+    async def loop(self):
+        pass
+
 class TokenBucket(object):
     def __init__(self, bytes_per_second, max_size_in_bytes=None, updates_per_second=10):
         self.bucket = 0
