@@ -115,7 +115,7 @@ class Engine(object):
                 raise KeyboardInterrupt # TODO should use a better exception, or something else entirely
             elif self._state._complete.all(): # TODO remove private variable access
                 await self.file_manager.move_file_to_final_location()
-            await trio.sleep(10)
+            await trio.sleep(2)
 
     async def info_loop(self):
         while True:
