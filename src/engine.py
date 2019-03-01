@@ -22,6 +22,22 @@ import tracker
 
 import config
 
+def _pick_random_one_in_bitarray(b):
+    n = len(b)
+    start = random.randint(0,n-1)
+    # look at tail
+    try:
+        i = b.index(True, start)
+        return i
+    except ValueError:
+        pass
+    # look at head
+    try:
+        i = b.index(True, 0, start)
+        return i
+    except ValueError:
+        return None
+
 logger = logging.getLogger('engine')
 
 stats = { 'requests_in': 0
@@ -192,9 +208,8 @@ class Engine(object):
                 continue
             # TODO don't read private field of another object
             targets = (~self._state._complete) & peer_state._pieces
-            indexes = [i for i, b in enumerate(targets) if b]
-            if indexes:
-                target_index = random.choice(indexes)
+            target_index = _pick_random_one_in_bitarray(targets)
+            if target_index is not None:
                 logger.info('{}: self any? {}, peer any? {}, target_index = {}'.format(address, self._state._complete.any(), peer_state._pieces.any(), target_index))
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
