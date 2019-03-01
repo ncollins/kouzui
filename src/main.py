@@ -1,8 +1,12 @@
 import argparse
 import hashlib
 import logging
+import multiprocessing as mp
+import pathlib
 import random
+import shutil
 import os
+import time
 
 import trio
 
@@ -57,11 +61,51 @@ def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
             random.choice(files).write_piece(p.index, data)
 
 def make_test_files_command(args):
-    print(args)
     torrent_data, torrent_info = read_torrent_file(args.torrent_path)
     download_dir = args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
     number_of_files = args.number_of_files
     make_test_files(torrent_data, torrent_info, download_dir, number_of_files)
+
+def test(test_dir, torrent_path, number_of_clients):
+    test_dir = pathlib.Path(test_dir)
+    # TODO separate timing of file copy and torrenting
+    start_time = time.perf_counter()
+    torrent_data, torrent_info = read_torrent_file(torrent_path)
+    # ----- RUN CLIENTS ----------------
+    client_processes = []
+    for i in range(number_of_clients):
+        client_dir = test_dir / 'clients' / ('client-{}'.format(i))
+        client_dir.mkdir(exist_ok=True, parents=True)
+
+        # TODO tidy up potential torrent_name, custom_name issues
+        torrent_name = bytes.decode(torrent_data[b'info'][b'name'])
+        test_file = test_dir / '{}.{}.part'.format(torrent_name, i)
+        tmp_file = client_dir / '{}.part'.format(torrent_name)
+        final_file = client_dir / torrent_name
+
+        try:
+            os.remove(final_file)
+        except FileNotFoundError:
+            pass
+
+        shutil.copy(test_file, tmp_file)
+
+        p = mp.Process(target=run, args=('WARNING', torrent_path, 50000 + i, client_dir))
+        client_processes.append((p, final_file, tmp_file))
+
+    torrent_start_time = time.perf_counter()
+    for p, _, _ in client_processes:
+        p.start()
+    # Wait for clients to complete and shutdown
+    while not all(os.path.exists(final_location) for _, final_location, _ in client_processes):
+        time.sleep(1)
+    end_time = time.perf_counter()
+    for p, _, _ in client_processes:
+        p.terminate()
+    print('{} clients finished, {} seconds (setup file copy took {} second)'.format(number_of_clients, end_time-torrent_start_time, torrent_start_time-start_time))
+
+def test_command(args):
+    test(args.test_dir, args.torrent_path, int(args.number_of_clients))
 
 def main():
     argparser = argparse.ArgumentParser()
@@ -79,6 +123,12 @@ def main():
     make_test_files.add_argument('--number-of-files', help='number of files to create')
     make_test_files.add_argument('--download-dir', help='directory to find the complete file and save the incomplete files')
     make_test_files.set_defaults(func=make_test_files_command)
+    # test-clients sub-command
+    test = sub_commands.add_parser("test-run", help="Run multiple clients in separate processes for testing")
+    test.add_argument('torrent_path', help='path to the .torrent file')
+    test.add_argument('--test-dir', help='number of clients')
+    test.add_argument('--number-of-clients', help='number of clients')
+    test.set_defaults(func=test_command)
     # --------------------------------------
     args = argparser.parse_args()
     args.func(args)
