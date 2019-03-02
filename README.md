@@ -19,6 +19,7 @@ It can then be run from the project directory with:
 
 ## What it can do
 
+Client features:
 - Load Torrent information from a .torrent file
 - Get peer information from a traker over the HTTP protocol
 - Connect to multiple peers and concurrently download/upload
@@ -26,14 +27,15 @@ It can then be run from the project directory with:
 - Send and receive "HAVE" messages (used to update knowledge of which peers have which pieces)
 - Choke uploads to peers giving poor download rates
 - Resume incomplete downloads
+- Rate limiting (using a basic [token bucket](https://en.wikipedia.org/wiki/Token_bucket) implementation)
+
+Testing features:
+- Split a file into multiple incomplete files
+- Run multiple versions of the client simultaneously using the multiprocessing module.
 
 ## TODO list
 
 See the [issues page](https://github.com/ncollins/kouzui/issues).
-
-## Bigger features I'm considering adding
-
-- Rate limiting - I'm currious to see how this might be implemented with Trio.
 
 ## Features I don't intend to add
 
