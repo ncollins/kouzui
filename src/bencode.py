@@ -4,35 +4,39 @@
 import collections
 import io
 
-def parse_string_length(s : io.BytesIO, i : bytes = b''):
+
+def parse_string_length(s: io.BytesIO, i: bytes = b""):
     # Take string from the front and return the rest
     c = s.read(1)
     while c.isdigit():
         i += c
         c = s.read(1)
     # c should be ':' here
-    if c == b':':
+    if c == b":":
         return int(i)
     else:
         raise Exception("String length should be terminated by ':'")
 
-def parse_string(s : io.BytesIO, n : int):
+
+def parse_string(s: io.BytesIO, n: int):
     return s.read(n)
 
-def parse_int(s : io.BytesIO):
-    i = b''
+
+def parse_int(s: io.BytesIO):
+    i = b""
     c = s.read(1)
     while c.isdigit():
         i += c
         c = s.read(1)
     # c should be 'e' here
-    if c == b'e':
+    if c == b"e":
         return int(i)
     else:
         raise Exception("Integer not terminated by 'e'")
 
-def parse_list(s : io.BytesIO):
-    l : list = []
+
+def parse_list(s: io.BytesIO):
+    l: list = []
     while True:
         v = parse_value(s)
         if v is None:
@@ -40,8 +44,9 @@ def parse_list(s : io.BytesIO):
         else:
             l.append(v)
 
-def parse_dict(s : io.BytesIO):
-    d : dict = collections.OrderedDict()
+
+def parse_dict(s: io.BytesIO):
+    d: dict = collections.OrderedDict()
     while True:
         k = parse_value(s)
         if k is None:
@@ -50,7 +55,8 @@ def parse_dict(s : io.BytesIO):
             v = parse_value(s)
             d[k] = v
 
-def parse_value(s : io.BytesIO ):
+
+def parse_value(s: io.BytesIO):
     # `s` is a string stream object
     # look at first character
     # digit -> string
@@ -60,25 +66,26 @@ def parse_value(s : io.BytesIO ):
     c = s.read(1)
     if c.isdigit():
         length = parse_string_length(s, c)
-        return parse_string(s, length) 
-    elif c == b'i':
+        return parse_string(s, length)
+    elif c == b"i":
         return parse_int(s)
-    elif c == b'l':
+    elif c == b"l":
         return parse_list(s)
-    elif c == b'd':
+    elif c == b"d":
         return parse_dict(s)
-    elif c == b'e' or c == '':
+    elif c == b"e" or c == "":
         None
     else:
         raise Exception("Expected a digit, 'i', 'l', or 'd'. Got {}".format(c))
 
-#def parse(s):
+
+# def parse(s):
 #    stream = io.StringIO(s)
 #    return parse_value(stream)
 
-#print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
+# print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
 
-#def extract_info(s):
+# def extract_info(s):
 #    c = s.read(1)
 #    if c != b'd':
 #        raise Exception("Need a dictionary to get 'info' string")
@@ -91,22 +98,28 @@ def parse_value(s : io.BytesIO ):
 #            _ = parse_value(s)
 #    raise Exception("No 'info' key found")
 
+
 def encode_bytes(s):
-    return b'%d:%s' % (len(s), s)
+    return b"%d:%s" % (len(s), s)
+
 
 def encode_string(s):
     return encode_bytes(s.encode())
 
+
 def encode_int(i):
-    return b'i%de' % i
+    return b"i%de" % i
+
 
 def encode_list(l):
-    inner = b''.join(encode_value(v) for v in l)
-    return b'l%se' % inner
+    inner = b"".join(encode_value(v) for v in l)
+    return b"l%se" % inner
+
 
 def encode_dict(d):
-    inner = b''.join(encode_value(k) + encode_value(v) for k,v in d.items())
-    return b'd%se' % inner
+    inner = b"".join(encode_value(k) + encode_value(v) for k, v in d.items())
+    return b"d%se" % inner
+
 
 def encode_value(v):
     if isinstance(v, bytes):
@@ -122,22 +135,25 @@ def encode_value(v):
     else:
         raise Exception('Unsupported type for bencoding: "{}"'.format(type(v)))
 
+
 def parse_compact_peers(raw_bytes):
     if (len(raw_bytes) % 6) != 0:
-        raise Exception('Peer list length is not a multiple of 6.')
+        raise Exception("Peer list length is not a multiple of 6.")
     else:
         peers = []
         for i in range(len(raw_bytes) // 6):
-            ip = '.'.join(str(i) for i in raw_bytes[i:i+4]).encode()
-            port = int.from_bytes(raw_bytes[i+4:i+6], byteorder='big')
+            ip = ".".join(str(i) for i in raw_bytes[i : i + 4]).encode()
+            port = int.from_bytes(raw_bytes[i + 4 : i + 6], byteorder="big")
             peers.append((ip, port))
         return peers
 
+
 def replace_with_localhost(tripple):
-    if tripple[0] == b'::1':
-        return (b'localhost', tripple[1], tripple[2])
+    if tripple[0] == b"::1":
+        return (b"localhost", tripple[1], tripple[2])
     else:
         return tripple
+
 
 def parse_peers(data, torrent):
     # TODO this try/except logic probably shouldn't be here as it's not really
@@ -146,5 +162,9 @@ def parse_peers(data, torrent):
         peer_list = parse_compact_peers(data)
         peer_list = [(ip, port, None) for ip, port in peer_list]
     except:
-        peer_list = [(x[b'ip'], x[b'port'], x[b'peer id']) for x in data]
-    return [ replace_with_localhost(tripple) for tripple in peer_list if tripple[1] != torrent.listening_port ]
+        peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]
+    return [
+        replace_with_localhost(tripple)
+        for tripple in peer_list
+        if tripple[1] != torrent.listening_port
+    ]

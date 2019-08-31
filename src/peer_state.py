@@ -5,15 +5,18 @@ from typing import NamedTuple, Tuple, Set
 import bitarray
 import trio
 
-PeerAddress = NamedTuple('PeerAddress', [('ip', bytes), ('port', int)])
+PeerAddress = NamedTuple("PeerAddress", [("ip", bytes), ("port", int)])
+
 
 class PeerType(Enum):
     SERVER = 0
     CLIENT = 1
 
+
 class ChokeAlert(Enum):
     ALERT = 0
     DONT_ALERT = 1
+
 
 class PeerState(object):
     def __init__(self, peer_id: bytes, num_pieces: int) -> None:
@@ -22,7 +25,7 @@ class PeerState(object):
         pieces.setall(False)
         self._pieces = pieces
         self._peer_id = peer_id
-        self._to_send_queue = trio.Queue(100) # TODO remove magic number
+        self._to_send_queue = trio.Queue(100)  # TODO remove magic number
         self._choked_us = True
         self._choked_them = True
         # stats
@@ -98,4 +101,6 @@ class PeerState(object):
         self._current_10_second_download_count = 0
 
     def get_20_second_rolling_download_count(self) -> int:
-        return self._prev_10_second_download_count + self._current_10_second_download_count
+        return (
+            self._prev_10_second_download_count + self._current_10_second_download_count
+        )

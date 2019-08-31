@@ -12,7 +12,7 @@ import trio
 
 from config import DEFAULT_LISTENING_PORT
 
-logger = logging.getLogger('torrent')
+logger = logging.getLogger("torrent")
 
 # Key information in torrent dictionary, d:
 #
@@ -27,12 +27,13 @@ logger = logging.getLogger('torrent')
 # exception of the last one (may be shorter)
 #
 # d['info']['length'] -> if single file, the length in bytes
-# OR 
-# d['info']['files'] -> if multiple files, a list of dictionaries with 
+# OR
+# d['info']['files'] -> if multiple files, a list of dictionaries with
 # 'length' and 'path' keys
 
 
-Piece = NamedTuple('Piece', [ ('filename', str), ('index', int), ('sha1hash', bytes)]) 
+Piece = NamedTuple("Piece", [("filename", str), ("index", int), ("sha1hash", bytes)])
+
 
 def _random_char() -> str:
     # ASCII ranges
@@ -48,8 +49,9 @@ def _random_char() -> str:
         c = chr(n - 52 + 48)
     return c
 
+
 def _generate_peer_id() -> bytes:
-    return ''.join(_random_char() for _ in range(0,20)).encode()
+    return "".join(_random_char() for _ in range(0, 20)).encode()
 
 
 def _parse_pieces(bstring: bytes) -> List[bytes]:
@@ -59,7 +61,7 @@ def _parse_pieces(bstring: bytes) -> List[bytes]:
         l: List[bytes] = []
         i = 0
         while i + 20 <= len(bstring):
-            l.append(bstring[i:i+20])
+            l.append(bstring[i : i + 20])
             i += 20
         return l
 
@@ -74,31 +76,33 @@ class Torrent(object):
     messages into a trio.Queue, which can be used in a blocking or non-blocking
     fashion.
     """
-    def __init__(self, tdict, info_string, directory, listening_port=None, custom_name=None):
+
+    def __init__(
+        self, tdict, info_string, directory, listening_port=None, custom_name=None
+    ):
         self._listening_port = listening_port
         self._info_string = info_string
         self._info_hash = hashlib.sha1(info_string).digest()
         self._peer_id = _generate_peer_id()
         self._uploaded = 0
         self._downloaded = 0
-        self._piece_length = int(tdict[b'info'][b'piece length'])
-        if b'files' in tdict[b'info']: # multi-file case
+        self._piece_length = int(tdict[b"info"][b"piece length"])
+        if b"files" in tdict[b"info"]:  # multi-file case
             raise Exception("multi-file torrents not yet supported")
-        else: # single file case
+        else:  # single file case
             # store hash and a bolean to mark if we have the piece or not
-            self._torrent_name = bytes.decode(tdict[b'info'][b'name'])
+            self._torrent_name = bytes.decode(tdict[b"info"][b"name"])
             if custom_name:
                 self._filename = os.path.join(directory, custom_name)
             else:
                 self._filename = os.path.join(directory, self._torrent_name)
 
             self._pieces = [
-                    Piece(self._filename, i, sha1) 
-                    for i, sha1 
-                    in enumerate(_parse_pieces(tdict[b'info'][b'pieces']))
-                    ]
+                Piece(self._filename, i, sha1)
+                for i, sha1 in enumerate(_parse_pieces(tdict[b"info"][b"pieces"]))
+            ]
 
-            self._file_length = int(tdict[b'info'][b'length'])
+            self._file_length = int(tdict[b"info"][b"length"])
             self._left = self._file_length
 
             self._num_pieces = len(self._pieces)
@@ -106,14 +110,18 @@ class Torrent(object):
             self._complete.setall(False)
 
         # deconstruct url
-        self._raw_tracker_url = tdict[b'announce']
-        r = re.compile(r'(?P<http>http://)?(?P<address>.+):(?P<port>\d+)(?P<path>.+)')
+        self._raw_tracker_url = tdict[b"announce"]
+        r = re.compile(r"(?P<http>http://)?(?P<address>.+):(?P<port>\d+)(?P<path>.+)")
         m = r.fullmatch(self._raw_tracker_url.decode())
         g = m.groupdict()
-        self._tracker_address = m['address'].encode()
-        self._tracker_port = int(m['port'])
-        self._tracker_path = m['path'].encode()
-        logger.info('Tracker address: {}, port: {}, path: {}'.format(self._tracker_address, self._tracker_port, self._tracker_path))
+        self._tracker_address = m["address"].encode()
+        self._tracker_port = int(m["port"])
+        self._tracker_path = m["path"].encode()
+        logger.info(
+            "Tracker address: {}, port: {}, path: {}".format(
+                self._tracker_address, self._tracker_port, self._tracker_path
+            )
+        )
 
         # info not from .torrent file
         self._interval = 100
@@ -136,7 +144,9 @@ class Torrent(object):
         if index < last_piece:
             return self._piece_length
         else:
-            return min(self._piece_length, self._file_length - self._piece_length * last_piece)
+            return min(
+                self._piece_length, self._file_length - self._piece_length * last_piece
+            )
 
     @property
     def info_hash(self):
