@@ -60,30 +60,20 @@ def run_command(args):
 def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
     t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
-    # dummy_queue = trio.open_memory_channel(1)
-    dummy_queue = None
-    main_fm = file_manager.FileManager(
+    main_file_wrapper = file_manager.FileWrapper(
         torrent=t,
-        pieces_to_write=dummy_queue,
-        write_confirmations=dummy_queue,
-        blocks_to_read=dummy_queue,
-        blocks_for_peers=dummy_queue,
         file_suffix="",
     )
-    main_fm.create_file_or_return_hashes()
+    main_file_wrapper.create_file_or_return_hashes()
     for i in range(int(number_of_files)):
-        fm = file_manager.FileManager(
+        fw = file_manager.FileWrapper(
             torrent=t,
-            pieces_to_write=dummy_queue,
-            write_confirmations=dummy_queue,
-            blocks_to_read=dummy_queue,
-            blocks_for_peers=dummy_queue,
             file_suffix=".{}".format(i),
         )
-        fm.create_file_or_return_hashes()
-        files.append(fm)
+        fw.create_file_or_return_hashes()
+        files.append(fw)
     for p in t._pieces:
-        data = main_fm.read_block(p.index, 0, t.piece_length(p.index))
+        data = main_file_wrapper.read_block(p.index, 0, t.piece_length(p.index))
         if p.sha1hash == hashlib.sha1(data).digest():
             random.choice(files).write_piece(p.index, data)
 

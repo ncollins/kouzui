@@ -73,19 +73,24 @@ class Engine(object):
         self._received_blocks: Dict[int, Tuple[bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
         # create FileManager and check hashes if file already exists
-        self.file_manager = file_manager.FileManager(
-            torrent=self._state,
-            pieces_to_write=self._complete_pieces_to_write[1],
-            write_confirmations=self._write_confirmations[0],
-            blocks_to_read=self._blocks_to_read[1],
-            blocks_for_peers=self._blocks_for_peers[0],
-        )
-        existing_hashes = self.file_manager.create_file_or_return_hashes()
+        file_wrapper = file_manager.FileWrapper(
+            torrent=self._state
+            )
+        existing_hashes = file_wrapper.create_file_or_return_hashes()
+
         if existing_hashes:
             for index, h in enumerate(existing_hashes):
                 piece_info = self._state.piece_info(index)
                 if piece_info.sha1hash == h:
                     self._state._complete[index] = True
+
+        self.file_manager = file_manager.FileManager(
+            file_wrapper = file_wrapper,
+            pieces_to_write=self._complete_pieces_to_write[1],
+            write_confirmations=self._write_confirmations[0],
+            blocks_to_read=self._blocks_to_read[1],
+            blocks_for_peers=self._blocks_for_peers[0],
+        )
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
             self.token_bucket = token_bucket.NullBucket()
