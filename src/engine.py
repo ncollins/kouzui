@@ -55,14 +55,18 @@ class Engine(object):
         self._auto_shutdown = auto_shutdown
         self._state = torrent
         # interact with self
-        self._peers_without_connection = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._peers_without_connection = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
         # interact with FileManager
-        self._complete_pieces_to_write = trio.Queue(config.INTERNAL_QUEUE_SIZE)
-        self._write_confirmations = trio.Queue(config.INTERNAL_QUEUE_SIZE)
-        self._blocks_to_read = trio.Queue(config.INTERNAL_QUEUE_SIZE)
-        self._blocks_for_peers = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._complete_pieces_to_write = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
+        self._write_confirmations = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._blocks_to_read = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._blocks_for_peers = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # interact with peer connections
-        self._msg_from_peer = trio.Queue(config.INTERNAL_QUEUE_SIZE)
+        self._msg_from_peer = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: Dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
@@ -70,11 +74,11 @@ class Engine(object):
         self.requests = requests.RequestManager()
         # create FileManager and check hashes if file already exists
         self.file_manager = file_manager.FileManager(
-            self._state,
-            self._complete_pieces_to_write,
-            self._write_confirmations,
-            self._blocks_to_read,
-            self._blocks_for_peers,
+            torrent=self._state,
+            pieces_to_write=self._complete_pieces_to_write[1],
+            write_confirmations=self._write_confirmations[0],
+            blocks_to_read=self._blocks_to_read[1],
+            blocks_for_peers=self._blocks_for_peers[0],
         )
         existing_hashes = self.file_manager.create_file_or_return_hashes()
         if existing_hashes:
@@ -91,8 +95,8 @@ class Engine(object):
             )
 
     @property
-    def msg_from_peer(self) -> trio.Queue:
-        return self._msg_from_peer
+    def peer_messages(self) -> trio.MemorySendChannel:
+        return self._msg_from_peer[0]
 
     async def run(self):
         async with trio.open_nursery() as nursery:
@@ -151,7 +155,7 @@ class Engine(object):
                     for b, data in blocks
                 ]
                 logger.info("Unwritten blocks: {}".format(unwritten_blocks))
-            queues = [
+            channels = [
                 self._peers_without_connection,
                 self._complete_pieces_to_write,
                 self._write_confirmations,
@@ -159,7 +163,9 @@ class Engine(object):
                 self._blocks_for_peers,
                 self._msg_from_peer,
             ]
-            logger.info("Queues  {}".format([q.statistics() for q in queues]))
+            logger.info(
+                "Memory channels {}".format([c[0].statistics() for c in channels])
+            )
             logger.info("Alive peers {}".format(self._peers.keys()))
             display.print_peers(self._state, self._peers)
             await trio.sleep(1)
@@ -204,7 +210,7 @@ class Engine(object):
         async with trio.open_nursery() as nursery:
             while True:
                 logger.debug("peer_clients_loop")
-                address = await self._peers_without_connection.get()
+                address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
     async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
@@ -215,7 +221,7 @@ class Engine(object):
                 logger.info(
                     "Adding new peer to queue: {} / {}".format(address, peer_id)
                 )
-                await self._peers_without_connection.put(address)
+                await self._peers_without_connection[0].send(address)
 
     def _blocks_from_index(self, index):
         piece_length = self._state.piece_length(index)
@@ -271,7 +277,7 @@ class Engine(object):
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         incStats("requests_out")
-                    await peer_state.to_send_queue.put(
+                    await peer_state.send_outgoing_data.send(
                         ("blocks_to_request", new_requests)
                     )
             else:
@@ -327,7 +333,7 @@ class Engine(object):
                     )
                 )
             elif self._state._complete[index]:
-                await self._blocks_to_read.put((peer_state.peer_id, request_info))
+                await self._blocks_to_read[0].send((peer_state.peer_id, request_info))
             else:
                 logger.warning(
                     "{} requested {} but piece is incomplete".format(
@@ -375,7 +381,7 @@ class Engine(object):
             complete_piece = bytes(piece_data)
             if hashlib.sha1(complete_piece).digest() == piece_info.sha1hash:
                 self._received_blocks.pop(index)  # TODO is this ordering significant?
-                await self._complete_pieces_to_write.put((index, complete_piece))
+                await self._complete_pieces_to_write[0].send((index, complete_piece))
             else:
                 self._received_blocks.pop(index)
                 self.requests.delete_all_for_piece(index)
@@ -384,9 +390,9 @@ class Engine(object):
     async def peer_messages_loop(self):
         while True:
             logger.debug("peer_messages_loop")
-            peer_state, msg_type, msg_payload = (
-                await self._msg_from_peer.get()
-            )  # TODO should use peer_id
+            peer_state, msg_type, msg_payload = await self._msg_from_peer[
+                1
+            ].receive()  # TODO should use peer_id
             logger.debug(
                 "Engine recieved peer message from {}".format(peer_state.peer_id)
             )
@@ -400,12 +406,12 @@ class Engine(object):
             self._peers.copy()
         )  # shallow copy, but that should be enough as we're not modifying the PeerState objects
         for _peer_id, peer_s in peers.items():
-            await peer_s.to_send_queue.put(("announce_have_piece", index))
+            await peer_s.send_outgoing_data.send(("announce_have_piece", index))
 
     async def file_write_confirmation_loop(self):
         while True:
             logger.debug("file_write_confirmation_loop")
-            index = await self._write_confirmations.get()
+            index = await self._write_confirmations[1].receive()
             self.requests.delete_all_for_piece(index)
             # NB - update the _complete vector first to guarantee that new clients get
             # the most upto date bitfield (they may also get a redundant HAVE message)
@@ -416,12 +422,12 @@ class Engine(object):
     async def file_reading_loop(self):
         while True:
             logger.debug("file_reading_loop")
-            peer_id, block_details, block = await self._blocks_for_peers.get()
+            peer_id, block_details, block = await self._blocks_for_peers[1].receive()
             incStats("blocks_out")
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
                 p_state.inc_upload_counters()
-                await p_state.to_send_queue.put(
+                await p_state.send_outgoing_data.send(
                     ("block_to_upload", (block_details, block))
                 )
             else:
@@ -463,7 +469,7 @@ class Engine(object):
                     alert = p_state.unchoke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.to_send_queue.put(("unchoke", None))
+                        await p_state.send_outgoing_data.send(("unchoke", None))
             for p_id in choke:
                 if (
                     p_id in self._peers
@@ -472,7 +478,7 @@ class Engine(object):
                     alert = p_state.choke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.to_send_queue.put(("choke", None))
+                        await p_state.send_outgoing_data.send(("choke", None))
             # update period
             period = (period + 1) % 3  # rotate period every 30 seconds
 

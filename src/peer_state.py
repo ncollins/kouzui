@@ -25,7 +25,9 @@ class PeerState(object):
         pieces.setall(False)
         self._pieces = pieces
         self._peer_id = peer_id
-        self._to_send_queue = trio.Queue(100)  # TODO remove magic number
+        self._outgoing_data_channel = trio.open_memory_channel(
+            100
+        )  # TODO remove magic number
         self._choked_us = True
         self._choked_them = True
         # stats
@@ -86,8 +88,12 @@ class PeerState(object):
         return self._peer_id
 
     @property
-    def to_send_queue(self) -> trio.Queue:
-        return self._to_send_queue
+    def receive_outgoing_data(self) -> trio.MemoryReceiveChannel:
+        return self._outgoing_data_channel[1]
+
+    @property
+    def send_outgoing_data(self) -> trio.MemorySendChannel:
+        return self._outgoing_data_channel[0]
 
     def inc_download_counters(self) -> None:
         self._total_download_count += 1

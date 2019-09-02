@@ -20,11 +20,12 @@ def _create_empty_file(path, torrent):
 class FileManager(object):
     def __init__(
         self,
+        *,
         torrent: tstate.Torrent,
-        pieces_to_write: trio.Queue,
-        write_confirmations: trio.Queue,
-        blocks_to_read: trio.Queue,
-        blocks_for_peers: trio.Queue,
+        pieces_to_write: trio.MemoryReceiveChannel,
+        write_confirmations: trio.MemorySendChannel,
+        blocks_to_read: trio.MemoryReceiveChannel,
+        blocks_for_peers: trio.MemorySendChannel,
         file_suffix="",
     ) -> None:
         self._torrent = torrent
@@ -78,17 +79,17 @@ class FileManager(object):
 
     async def piece_writing_loop(self):
         while True:
-            index, piece = await self._pieces_to_write.get()
+            index, piece = await self._pieces_to_write.receive()
             self.write_piece(index, piece)
             logger.info("Wrote #{} to disk".format(index))
-            await self._write_confirmations.put(index)
+            await self._write_confirmations.send(index)
 
     async def block_reading_loop(self):
         while True:
-            who, (index, begin, length) = await self._blocks_to_read.get()
+            who, (index, begin, length) = await self._blocks_to_read.receive()
             block = self.read_block(index, begin, length)
             # logger.debug('Read block {} for {}, sha1 = {}'.format((index, begin, length), who, hashlib.sha1(block).digest()))
-            await self._blocks_for_peers.put((who, (index, begin, length), block))
+            await self._blocks_for_peers.send((who, (index, begin, length), block))
 
     def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length  # TODO

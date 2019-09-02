@@ -123,15 +123,23 @@ class PeerEngine(object):
     PeerEngine is initialized with a stream and two queues.
     """
 
-    def __init__(self, engine, peer_address, expected_peer_id, stream, recieved_queue):
+    def __init__(
+        self,
+        engine,
+        peer_address,
+        expected_peer_id,
+        stream,
+        *,
+        send_peer_msg_to_engine: trio.MemorySendChannel
+    ):
         self._tstate = engine._state
         self._main_engine = engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
         self._peer_id_and_state = None
         self._peer_stream = PeerStream(stream, engine.token_bucket)
-        self._received_queue = recieved_queue
-        self._to_send_queue = None
+        self._send_peer_msg_to_engine = send_peer_msg_to_engine
+        self._receive_outgoing_data = None
 
     async def run(self, initiate=True):
         try:
@@ -151,7 +159,7 @@ class PeerEngine(object):
                 )  # TODO don't use private property
                 self._main_engine._peers[peer_id] = peer_s
                 self._peer_id_and_state = (peer_id, peer_s)
-                self._to_send_queue = peer_s.to_send_queue
+                self._receive_outgoing_data = peer_s.receive_outgoing_data
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
@@ -222,7 +230,7 @@ class PeerEngine(object):
                     msg_type = data[0]
                     msg_payload = data[1:]
                     logger.debug("Putting message in queue for engine")
-                    await self._received_queue.put(
+                    await self._send_peer_msg_to_engine.send(
                         (self._peer_id_and_state[1], msg_type, msg_payload)
                     )  # TODO should use peer_id
 
@@ -248,7 +256,7 @@ class PeerEngine(object):
             logging.debug("sending_loop")
             command, data = "keepalive", None
             with trio.move_on_after(KEEPALIVE_SECONDS):
-                command, data = await self._to_send_queue.get()
+                command, data = await self._receive_outgoing_data.receive()
             if command == "blocks_to_request":
                 for index, begin, length in data:
                     raw_msg = bytes([messages.PeerMsg.REQUEST])
@@ -322,7 +330,9 @@ async def start_peer_engine(engine, peer_address, stream, initiate=True):
     """
     Find (or create) queues for relevant stream, and create PeerEngine.
     """
-    peer_engine = PeerEngine(engine, peer_address, None, stream, engine.msg_from_peer)
+    peer_engine = PeerEngine(
+        engine, peer_address, None, stream, send_peer_msg_to_engine=engine.peer_messages
+    )
     await peer_engine.run(initiate=True)
 
 
