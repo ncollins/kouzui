@@ -60,16 +60,10 @@ def run_command(args):
 def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
     t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
-    main_file_wrapper = file_manager.FileWrapper(
-        torrent=t,
-        file_suffix="",
-    )
+    main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
     for i in range(int(number_of_files)):
-        fw = file_manager.FileWrapper(
-            torrent=t,
-            file_suffix=".{}".format(i),
-        )
+        fw = file_manager.FileWrapper(torrent=t, file_suffix=".{}".format(i))
         fw.create_file_or_return_hashes()
         files.append(fw)
     for p in t._pieces:

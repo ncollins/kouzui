@@ -51,7 +51,16 @@ def incStats(field):
 
 
 class Engine(object):
-    def __init__(self, torrent: state.Torrent, auto_shutdown=False) -> None:
+    def __init__(
+        self,
+        *,
+        torrent: state.Torrent,
+        complete_pieces_to_write: trio.MemorySendChannel,
+        write_confirmations: trio.MemoryReceiveChannel,
+        blocks_to_read: trio.MemorySendChannel,
+        blocks_for_peers: trio.MemoryReceiveChannel,
+        auto_shutdown=False
+    ) -> None:
         self._auto_shutdown = auto_shutdown
         self._state = torrent
         # interact with self
@@ -59,12 +68,10 @@ class Engine(object):
             config.INTERNAL_QUEUE_SIZE
         )
         # interact with FileManager
-        self._complete_pieces_to_write = trio.open_memory_channel(
-            config.INTERNAL_QUEUE_SIZE
-        )
-        self._write_confirmations = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
-        self._blocks_to_read = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
-        self._blocks_for_peers = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._complete_pieces_to_write = complete_pieces_to_write
+        self._write_confirmations = write_confirmations
+        self._blocks_to_read = blocks_to_read
+        self._blocks_for_peers = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
@@ -72,25 +79,6 @@ class Engine(object):
         # data received but not written to disk
         self._received_blocks: Dict[int, Tuple[bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
-        # create FileManager and check hashes if file already exists
-        file_wrapper = file_manager.FileWrapper(
-            torrent=self._state
-            )
-        existing_hashes = file_wrapper.create_file_or_return_hashes()
-
-        if existing_hashes:
-            for index, h in enumerate(existing_hashes):
-                piece_info = self._state.piece_info(index)
-                if piece_info.sha1hash == h:
-                    self._state._complete[index] = True
-
-        self.file_manager = file_manager.FileManager(
-            file_wrapper = file_wrapper,
-            pieces_to_write=self._complete_pieces_to_write[1],
-            write_confirmations=self._write_confirmations[0],
-            blocks_to_read=self._blocks_to_read[1],
-            blocks_for_peers=self._blocks_for_peers[0],
-        )
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
             self.token_bucket = token_bucket.NullBucket()
@@ -111,7 +99,6 @@ class Engine(object):
             nursery.start_soon(self.tracker_loop)
             nursery.start_soon(self.peer_messages_loop)
             nursery.start_soon(self.file_write_confirmation_loop)
-            nursery.start_soon(self.file_manager.run)
             nursery.start_soon(self.file_reading_loop)
             nursery.start_soon(self.info_loop)
             nursery.start_soon(self.choking_loop)
@@ -128,10 +115,10 @@ class Engine(object):
                 and all(complete_peers)
                 and self._state._complete.all()
             ):  # TODO remove private variable access
-                await self.file_manager.move_file_to_final_location()
+                await self._complete_pieces_to_write.send((None, None))
                 raise KeyboardInterrupt  # TODO should use a better exception, or something else entirely
             elif self._state._complete.all():  # TODO remove private variable access
-                await self.file_manager.move_file_to_final_location()
+                await self._complete_pieces_to_write.send((None, None))
             await trio.sleep(2)
 
     async def info_loop(self):
@@ -161,15 +148,15 @@ class Engine(object):
                 ]
                 logger.info("Unwritten blocks: {}".format(unwritten_blocks))
             channels = [
-                self._peers_without_connection,
+                self._peers_without_connection[0],
                 self._complete_pieces_to_write,
                 self._write_confirmations,
                 self._blocks_to_read,
                 self._blocks_for_peers,
-                self._msg_from_peer,
+                self._msg_from_peer[0],
             ]
             logger.info(
-                "Memory channels {}".format([c[0].statistics() for c in channels])
+                "Memory channels {}".format([c.statistics() for c in channels])
             )
             logger.info("Alive peers {}".format(self._peers.keys()))
             display.print_peers(self._state, self._peers)
@@ -338,7 +325,7 @@ class Engine(object):
                     )
                 )
             elif self._state._complete[index]:
-                await self._blocks_to_read[0].send((peer_state.peer_id, request_info))
+                await self._blocks_to_read.send((peer_state.peer_id, request_info))
             else:
                 logger.warning(
                     "{} requested {} but piece is incomplete".format(
@@ -386,7 +373,7 @@ class Engine(object):
             complete_piece = bytes(piece_data)
             if hashlib.sha1(complete_piece).digest() == piece_info.sha1hash:
                 self._received_blocks.pop(index)  # TODO is this ordering significant?
-                await self._complete_pieces_to_write[0].send((index, complete_piece))
+                await self._complete_pieces_to_write.send((index, complete_piece))
             else:
                 self._received_blocks.pop(index)
                 self.requests.delete_all_for_piece(index)
@@ -395,9 +382,9 @@ class Engine(object):
     async def peer_messages_loop(self):
         while True:
             logger.debug("peer_messages_loop")
-            peer_state, msg_type, msg_payload = await self._msg_from_peer[
-                1
-            ].receive()  # TODO should use peer_id
+            peer_state, msg_type, msg_payload = (
+                await self._msg_from_peer[1].receive()
+            )  # TODO should use peer_id
             logger.debug(
                 "Engine recieved peer message from {}".format(peer_state.peer_id)
             )
@@ -416,7 +403,7 @@ class Engine(object):
     async def file_write_confirmation_loop(self):
         while True:
             logger.debug("file_write_confirmation_loop")
-            index = await self._write_confirmations[1].receive()
+            index = await self._write_confirmations.receive()
             self.requests.delete_all_for_piece(index)
             # NB - update the _complete vector first to guarantee that new clients get
             # the most upto date bitfield (they may also get a redundant HAVE message)
@@ -427,7 +414,7 @@ class Engine(object):
     async def file_reading_loop(self):
         while True:
             logger.debug("file_reading_loop")
-            peer_id, block_details, block = await self._blocks_for_peers[1].receive()
+            peer_id, block_details, block = await self._blocks_for_peers.receive()
             incStats("blocks_out")
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
@@ -500,8 +487,53 @@ class Engine(object):
 
 def run(torrent):
     try:
-        engine = Engine(torrent)
-        trio.run(engine.run)
+        # create FileManager and check hashes if file already exists
+        file_wrapper = file_manager.FileWrapper(torrent=torrent)
+        existing_hashes = file_wrapper.create_file_or_return_hashes()
+
+        if existing_hashes:
+            for index, h in enumerate(existing_hashes):
+                piece_info = torrent.piece_info(index)
+                if piece_info.sha1hash == h:
+                    torrent._complete[
+                        index
+                    ] = True  # TODO remove private property access
+
+        s_complete_pieces, r_complete_pieces = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
+        s_write_confirmations, r_write_confirmations = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
+        s_blocks_to_read, r_blocks_to_read = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
+        s_blocks_for_peers, r_blocks_for_peers = trio.open_memory_channel(
+            config.INTERNAL_QUEUE_SIZE
+        )
+
+        file_engine = file_manager.FileManager(
+            file_wrapper=file_wrapper,
+            pieces_to_write=r_complete_pieces,
+            write_confirmations=s_write_confirmations,
+            blocks_to_read=r_blocks_to_read,
+            blocks_for_peers=s_blocks_for_peers,
+        )
+
+        engine = Engine(
+            torrent=torrent,
+            complete_pieces_to_write=s_complete_pieces,
+            write_confirmations=r_write_confirmations,
+            blocks_to_read=s_blocks_to_read,
+            blocks_for_peers=r_blocks_for_peers,
+        )
+
+        async def run():
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(file_engine.run)
+                nursery.start_soon(engine.run)
+
+        trio.run(run)
     except KeyboardInterrupt:
         print()
         print("Shutting down without cleanup...")

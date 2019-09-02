@@ -72,7 +72,7 @@ class FileManager(object):
     def __init__(
         self,
         *,
-        file_wrapper : FileWrapper,
+        file_wrapper: FileWrapper,
         pieces_to_write: trio.MemoryReceiveChannel,
         write_confirmations: trio.MemorySendChannel,
         blocks_to_read: trio.MemoryReceiveChannel,
@@ -84,8 +84,8 @@ class FileManager(object):
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
 
-    async def move_file_to_final_location(self):
-        self._file_wrapper.move_file_to_final_location()
+    # async def move_file_to_final_location(self):
+    #    self._file_wrapper.move_file_to_final_location()
 
     async def run(self):
         async with trio.open_nursery() as nursery:
@@ -95,9 +95,12 @@ class FileManager(object):
     async def piece_writing_loop(self):
         while True:
             index, piece = await self._pieces_to_write.receive()
-            self._file_wrapper.write_piece(index, piece)
-            logger.info("Wrote #{} to disk".format(index))
-            await self._write_confirmations.send(index)
+            if (index is None) and (piece is None):  # TODO better msg types
+                self._file_wrapper.move_file_to_final_location()
+            else:
+                self._file_wrapper.write_piece(index, piece)
+                logger.info("Wrote #{} to disk".format(index))
+                await self._write_confirmations.send(index)
 
     async def block_reading_loop(self):
         while True:
