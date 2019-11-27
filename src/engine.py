@@ -4,7 +4,7 @@ import io
 import logging
 import math
 import random
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Union
 
 import bitarray
 import trio
@@ -16,7 +16,7 @@ import messages
 import peer_connection
 import requests
 import peer_state
-import token_bucket
+from token_bucket import NullBucket, TokenBucket
 import torrent as state
 import tracker
 
@@ -81,11 +81,9 @@ class Engine(object):
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
-            self.token_bucket = token_bucket.NullBucket()
+            self.token_bucket: Union[NullBucket, TokenBucket] = NullBucket()
         else:
-            self.token_bucket = token_bucket.TokenBucket(
-                config.MAX_OUTGOING_BYTES_PER_SECOND
-            )
+            self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
 
     @property
     def peer_messages(self) -> trio.MemorySendChannel:
@@ -155,9 +153,7 @@ class Engine(object):
                 self._blocks_for_peers,
                 self._msg_from_peer[0],
             ]
-            logger.info(
-                "Memory channels {}".format([c.statistics() for c in channels])
-            )
+            logger.info("Memory channels {}".format([c.statistics() for c in channels]))
             logger.info("Alive peers {}".format(self._peers.keys()))
             display.print_peers(self._state, self._peers)
             await trio.sleep(1)
@@ -384,7 +380,7 @@ class Engine(object):
             logger.debug("peer_messages_loop")
             peer_state, msg_type, msg_payload = (
                 await self._msg_from_peer[1].receive()
-            )  # TODO should use peer_id
+            ) # TODO should use peer_id
             logger.debug(
                 "Engine recieved peer message from {}".format(peer_state.peer_id)
             )
