@@ -14,9 +14,7 @@ class RequestManager(object):
     """
 
     def __init__(self):
-        self._requests: Set[
-            Tuple[bytes, Tuple[int, int, int], datetime.datettime]
-        ] = set()
+        self._requests: Set[Tuple[bytes, Tuple[int, int, int], datetime.datettime]] = set()
 
     @property
     def size(self):
@@ -28,18 +26,12 @@ class RequestManager(object):
     def delete_all_for_piece(self, index: int):
         to_delete = set((p_id, r, t) for p_id, r, t in self._requests if r[0] == index)
         logger.info(
-            "Found {} block requests to delete for piece index {}".format(
-                len(to_delete), index
-            )
+            "Found {} block requests to delete for piece index {}".format(len(to_delete), index)
         )
-        self._requests = set(
-            (p_id, r, t) for p_id, r, t in self._requests if not r[0] == index
-        )
+        self._requests = set((p_id, r, t) for p_id, r, t in self._requests if not r[0] == index)
 
     def delete_all_for_peer(self, peer_id: bytes):
-        self._requests = set(
-            (p_id, r, t) for p_id, r, t in self._requests if p_id != peer_id
-        )
+        self._requests = set((p_id, r, t) for p_id, r, t in self._requests if p_id != peer_id)
 
     def delete_all(self):
         self._requests = set()

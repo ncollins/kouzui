@@ -42,9 +42,7 @@ def pretty_print(width, p_id, pieces, received_from, sent_to):
     lines = [
         p_id.decode("ascii"),
         "Complete      : {}%".format(math.floor(sum(pieces) / len(pieces) * 100)),
-        "Received from : {} blocks".format(received_from)
-        if (received_from is not None)
-        else "",
+        "Received from : {} blocks".format(received_from) if (received_from is not None) else "",
         "Sent to       : {} blocks".format(sent_to) if (sent_to is not None) else "",
     ]
     ##
@@ -55,8 +53,7 @@ def pretty_print(width, p_id, pieces, received_from, sent_to):
     num_pieces = len(pieces)
     display_block = num_pieces // total_grid_count
     count_pieces = [
-        sum(pieces[i * display_block : (i + 1) * display_block])
-        for i in range(total_grid_count)
+        sum(pieces[i * display_block : (i + 1) * display_block]) for i in range(total_grid_count)
     ]
     display_pieces = [display_piece(n, display_block) for n in count_pieces]
     ##

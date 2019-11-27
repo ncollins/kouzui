@@ -40,9 +40,7 @@ class FileWrapper(object):
                 hashes.append(h)
             self._file.close()
         except FileNotFoundError:
-            _create_empty_file(
-                self._file_path, self._torrent
-            )  # TODO don't read private property
+            _create_empty_file(self._file_path, self._torrent)  # TODO don't read private property
             hashes = None
         self._file = open(self._file_path, "rb+")
         return hashes

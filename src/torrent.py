@@ -77,9 +77,7 @@ class Torrent(object):
     fashion.
     """
 
-    def __init__(
-        self, tdict, info_string, directory, listening_port=None, custom_name=None
-    ):
+    def __init__(self, tdict, info_string, directory, listening_port=None, custom_name=None):
         self._listening_port = listening_port
         self._info_string = info_string
         self._info_hash = hashlib.sha1(info_string).digest()
@@ -144,9 +142,7 @@ class Torrent(object):
         if index < last_piece:
             return self._piece_length
         else:
-            return min(
-                self._piece_length, self._file_length - self._piece_length * last_piece
-            )
+            return min(self._piece_length, self._file_length - self._piece_length * last_piece)
 
     @property
     def info_hash(self):

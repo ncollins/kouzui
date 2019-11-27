@@ -25,9 +25,7 @@ class PeerState(object):
         pieces.setall(False)
         self._pieces = pieces
         self._peer_id = peer_id
-        self._outgoing_data_channel = trio.open_memory_channel(
-            100
-        )  # TODO remove magic number
+        self._outgoing_data_channel = trio.open_memory_channel(100)  # TODO remove magic number
         self._choked_us = True
         self._choked_them = True
         # stats
@@ -107,6 +105,4 @@ class PeerState(object):
         self._current_10_second_download_count = 0
 
     def get_20_second_rolling_download_count(self) -> int:
-        return (
-            self._prev_10_second_download_count + self._current_10_second_download_count
-        )
+        return self._prev_10_second_download_count + self._current_10_second_download_count

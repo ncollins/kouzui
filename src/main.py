@@ -36,18 +36,14 @@ def run(log_level, torrent_path, listening_port, download_dir):
         log_level = getattr(logging, log_level.upper())
     else:
         log_level = getattr(logging, "WARNING")
-    logfile = "tmp/{}.log".format(
-        listening_port
-    )  # TODO - directory shouldn't be hardcoded
+    logfile = "tmp/{}.log".format(listening_port)  # TODO - directory shouldn't be hardcoded
     logging.basicConfig(
         filename=logfile,
         level=log_level,
         format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s",
     )
     torrent_data, torrent_info = read_torrent_file(torrent_path)
-    download_dir = (
-        download_dir if download_dir else os.path.dirname(os.path.abspath(__file__))
-    )
+    download_dir = download_dir if download_dir else os.path.dirname(os.path.abspath(__file__))
     port = int(listening_port) if listening_port else None
     t = Torrent(torrent_data, torrent_info, download_dir, port)
     engine.run(t)
@@ -75,9 +71,7 @@ def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
 def make_test_files_command(args):
     torrent_data, torrent_info = read_torrent_file(args.torrent_path)
     download_dir = (
-        args.download_dir
-        if args.download_dir
-        else os.path.dirname(os.path.abspath(__file__))
+        args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
     )
     number_of_files = args.number_of_files
     make_test_files(torrent_data, torrent_info, download_dir, number_of_files)
@@ -107,27 +101,21 @@ def test(test_dir, torrent_path, number_of_clients):
 
         shutil.copy(test_file, tmp_file)
 
-        p = mp.Process(
-            target=run, args=("WARNING", torrent_path, 50000 + i, client_dir)
-        )
+        p = mp.Process(target=run, args=("WARNING", torrent_path, 50000 + i, client_dir))
         client_processes.append((p, final_file, tmp_file))
 
     torrent_start_time = time.perf_counter()
     for p, _, _ in client_processes:
         p.start()
     # Wait for clients to complete and shutdown
-    while not all(
-        os.path.exists(final_location) for _, final_location, _ in client_processes
-    ):
+    while not all(os.path.exists(final_location) for _, final_location, _ in client_processes):
         time.sleep(1)
     end_time = time.perf_counter()
     for p, _, _ in client_processes:
         p.terminate()
     print(
         "{} clients finished, {} seconds (setup file copy took {} second)".format(
-            number_of_clients,
-            end_time - torrent_start_time,
-            torrent_start_time - start_time,
+            number_of_clients, end_time - torrent_start_time, torrent_start_time - start_time
         )
     )
 
@@ -142,22 +130,18 @@ def main():
     sub_commands = argparser.add_subparsers(help="sub-commands help")
     run = sub_commands.add_parser("run", help="Run Bittorrent client")
     run.add_argument("torrent_path", help="path to the .torrent file")
-    run.add_argument(
-        "--listening-port", help="listening port for incoming peer connections"
-    )
+    run.add_argument("--listening-port", help="listening port for incoming peer connections")
     run.add_argument("--log-level", help="DEBUG/INFO/WARNING")
     run.add_argument("--download-dir", help="directory to save the file in")
     run.set_defaults(func=run_command)
     # make-test-files sub-command ----------
     make_test_files = sub_commands.add_parser(
-        "make-test-files",
-        help="Split a complete file into incomplete files for testing",
+        "make-test-files", help="Split a complete file into incomplete files for testing"
     )
     make_test_files.add_argument("torrent_path", help="path to the .torrent file")
     make_test_files.add_argument("--number-of-files", help="number of files to create")
     make_test_files.add_argument(
-        "--download-dir",
-        help="directory to find the complete file and save the incomplete files",
+        "--download-dir", help="directory to find the complete file and save the incomplete files"
     )
     make_test_files.set_defaults(func=make_test_files_command)
     # test-clients sub-command
