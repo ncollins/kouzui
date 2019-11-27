@@ -5,6 +5,8 @@ from typing import NamedTuple, Tuple, Set
 import bitarray
 import trio
 
+import config
+
 PeerAddress = NamedTuple("PeerAddress", [("ip", bytes), ("port", int)])
 
 
@@ -25,7 +27,7 @@ class PeerState(object):
         pieces.setall(False)
         self._pieces = pieces
         self._peer_id = peer_id
-        self._outgoing_data_channel = trio.open_memory_channel(100)  # TODO remove magic number
+        self._outgoing_data_channel = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         self._choked_us = True
         self._choked_them = True
         # stats
