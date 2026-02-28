@@ -75,7 +75,7 @@ class Engine(object):
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: Dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
-        self._received_blocks: Dict[int, Tuple[bitarray, bytearray]] = dict()
+        self._received_blocks: Dict[int, Tuple[bitarray.bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:

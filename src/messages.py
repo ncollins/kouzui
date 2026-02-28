@@ -20,7 +20,7 @@ def parse_have(s: bytes) -> int:
     return int.from_bytes(s[:4], byteorder="big")
 
 
-def parse_bitfield(s: bytes) -> bitarray:
+def parse_bitfield(s: bytes) -> bitarray.bitarray:
     # NOTE the input will be an integer number of bytes, so it may
     # have extra bits
     b = bitarray.bitarray()
