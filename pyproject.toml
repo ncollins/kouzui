@@ -16,6 +16,10 @@ dev = [
     "ruff>=0.15.4",
 ]
 
+[tool.mypy]
+python_version = 3.11
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
