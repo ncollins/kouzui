@@ -14,11 +14,15 @@ dependencies = [
 dev = [
     "mypy>=1.19.1",
     "ruff>=0.15.4",
+    "ty>=0.0.19",
 ]
 
 [tool.mypy]
 python_version = 3.11
 ignore_missing_imports = true
+
+[tool.ty.environment]
+python-version = "3.11"
 
 [tool.ruff]
 line-length = 100
