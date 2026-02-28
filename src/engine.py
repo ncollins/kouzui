@@ -59,7 +59,7 @@ class Engine(object):
         write_confirmations: trio.MemoryReceiveChannel,
         blocks_to_read: trio.MemorySendChannel,
         blocks_for_peers: trio.MemoryReceiveChannel,
-        auto_shutdown=False
+        auto_shutdown=False,
     ) -> None:
         self._auto_shutdown = auto_shutdown
         self._state = torrent
