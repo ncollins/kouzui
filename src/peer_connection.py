@@ -311,6 +311,7 @@ async def start_peer_engine(engine, peer_address, stream, initiate=True):
 
 def make_handler(engine):
     async def handler(stream):
+        peer_address = None
         try:
             peer_info = stream.socket.getpeername()
             ip: bytes = peer_info[0]
@@ -320,7 +321,9 @@ def make_handler(engine):
             await start_peer_engine(engine, peer_address, stream, initiate=False)
         except Exception as e:  # TODO this might be too general
             logger.warning(
-                "Failed to maintain peer connection to {} because of {}".format(peer_address, e)
+                "Failed to maintain peer connection to {} because of {}".format(
+                    peer_address or "<unknown>", e
+                )
             )
 
     return handler
