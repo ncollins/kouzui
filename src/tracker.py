@@ -22,17 +22,15 @@ def tracker_request(torrent, event) -> h11.Request:
     """
     d = {
         b"info_hash": urllib_parse.quote_from_bytes(torrent.info_hash).encode(),
-        b"peer_id": torrent.peer_id
+        b"peer_id": torrent.peer_id,
         # ip
-        ,
         b"port": _int2bytes(torrent.listening_port),
         b"uploaded": _int2bytes(torrent.uploaded),
         b"downloaded": _int2bytes(torrent.downloaded),
-        b"left": _int2bytes(torrent.left)
+        b"left": _int2bytes(torrent.left),
         # , b'event': event
         # , b'compact': b'1'
-        ,
-        b"compact": b"0"
+        b"compact": b"0",
         # testing
         # , b'supportcrypto': b'1'
         # , b'key': b'71c04610'

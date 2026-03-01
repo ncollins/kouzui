@@ -22,7 +22,7 @@ def display_piece(count, display_block):
         else:
             return " "
     else:
-        block = "\u25A9"
+        block = "\u25a9"
         if count == display_block:
             return CGREEN + block + CEND
         elif (count / display_block) > 0.66:

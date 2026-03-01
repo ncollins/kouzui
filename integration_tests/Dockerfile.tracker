@@ -1,0 +1,10 @@
+FROM node:lts-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g bittorrent-tracker
+
+EXPOSE 8000
+CMD ["bittorrent-tracker", "--http", "--port", "8000"]

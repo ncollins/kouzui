@@ -120,7 +120,7 @@ class PeerEngine(object):
         expected_peer_id,
         stream,
         *,
-        send_peer_msg_to_engine: trio.MemorySendChannel
+        send_peer_msg_to_engine: trio.MemorySendChannel,
     ):
         self._tstate = engine._state
         self._main_engine = engine
