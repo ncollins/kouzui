@@ -4,7 +4,7 @@ import io
 import logging
 import math
 import random
-from typing import List, Dict, Tuple, Set, Union
+from typing import List, Dict, Tuple, Set, Union, Any
 
 import bitarray
 import trio
@@ -145,7 +145,7 @@ class Engine(object):
                     (i, b, len(data)) for i, (b, data) in self._received_blocks.items()
                 ]
                 logger.info("Unwritten blocks: {}".format(unwritten_blocks))
-            channels = [
+            channels: list[trio.MemorySendChannel[Any] | trio.MemoryReceiveChannel[Any]] = [
                 self._peers_without_connection[0],
                 self._complete_pieces_to_write,
                 self._write_confirmations,
