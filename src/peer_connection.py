@@ -4,6 +4,7 @@ from typing import Any, Optional, Tuple, List
 import bitarray
 import trio
 
+import engine
 import messages
 import peer_state
 
@@ -115,23 +116,24 @@ class PeerEngine(object):
 
     def __init__(
         self,
-        engine,
+        main_engine: engine.Engine,
         peer_address,
         expected_peer_id,
         stream,
         *,
         send_peer_msg_to_engine: trio.MemorySendChannel,
     ):
-        self._tstate = engine._state
-        self._main_engine = engine
+        self._tstate = main_engine._state
+        self._main_engine: engine.Engine = main_engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
         self._peer_id_and_state: Optional[Tuple[Any, peer_state.PeerState]] = None
-        self._peer_stream = PeerStream(stream, engine.token_bucket)
+        self._peer_stream = PeerStream(stream, main_engine.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
         self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[Tuple[str, Any]]] = None
 
     async def run(self, initiate=True):
+        peer_id = None
         try:
             # Do handshakes before starting main loops
             if initiate == True:
@@ -154,7 +156,7 @@ class PeerEngine(object):
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            if self._peer_id_and_state:
+            if self._peer_id_and_state and peer_id is not None:
                 self._main_engine._peers.pop(peer_id)
             logger.exception("Exception raised in PeerEngine")
             logger.info(
@@ -162,7 +164,7 @@ class PeerEngine(object):
             )
             raise e
         except trio.MultiError:
-            if self._peer_id_and_state:
+            if self._peer_id_and_state and peer_id is not None:
                 self._main_engine._peers.pop(peer_id)
             logger.exception("MultiError raised in PeerEngine")
             logger.info(
