@@ -43,4 +43,5 @@ async def run_servers():
         nursery.start_soon(run_server, 8182)
 
 
-trio.run(run_servers)
+if __name__ == "__main__":
+    trio.run(run_servers)
