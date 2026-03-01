@@ -54,7 +54,7 @@ def tracker_request(torrent, event) -> h11.Request:
 async def query(torrent, event) -> bytes:
     url: bytes = torrent.tracker_address
     port: bytes = torrent.tracker_port
-    logger.debug("url/port = {}/{}".format(url, port))
+    logger.debug("url/port = {!r}/{}".format(url, port))
     stream = await trio.open_tcp_stream(
         url.decode("ascii"), port
     )  # TODO fix hack with string/bytes issue

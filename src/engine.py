@@ -196,7 +196,7 @@ class Engine(object):
             if peer_id in self._peers:
                 logger.info("Peer already exists: {}".format(peer_id))
             else:
-                logger.info("Adding new peer to queue: {} / {}".format(address, peer_id))
+                logger.info("Adding new peer to queue: {!r} / {}".format(address, peer_id))
                 await self._peers_without_connection[0].send(address)
 
     def _blocks_from_index(self, index):
@@ -224,14 +224,14 @@ class Engine(object):
             target_index = _pick_random_one_in_bitarray(targets)
             if target_index is not None:
                 logger.info(
-                    "{}: self any? {}, peer any? {}, target_index = {}".format(
+                    "{!r}: self any? {}, peer any? {}, target_index = {}".format(
                         address, self._state._complete.any(), peer_state._pieces.any(), target_index
                     )
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
                     logger.info(
-                        "{}: Not making new requests: {} existing".format(
+                        "{!r}: Not making new requests: {} existing".format(
                             address, len(existing_requests)
                         )
                     )
@@ -240,18 +240,18 @@ class Engine(object):
                     suggested_requests = self._blocks_from_index(target_index)
                     new_requests = suggested_requests.difference(existing_requests)
                     logger.info(
-                        "{}: {} suggested requests, {} existing".format(
+                        "{!r}: {} suggested requests, {} existing".format(
                             address, len(suggested_requests), len(existing_requests)
                         )
                     )
-                logger.info("{}: new_requests = {}".format(address, new_requests))
+                logger.info("{!r}: new_requests = {}".format(address, new_requests))
                 if new_requests:
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         incStats("requests_out")
                     await peer_state.send_outgoing_data.send(("blocks_to_request", new_requests))
             else:
-                logger.info("No target pieces for {}".format(address))
+                logger.info("No target pieces for {!r}".format(address))
 
     async def handle_peer_message(self, peer_id, msg_type, msg_payload):
         if peer_id not in self._peers:

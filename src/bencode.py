@@ -76,7 +76,7 @@ def parse_value(s: io.BytesIO):
     elif c == b"e" or c == "":
         None
     else:
-        raise Exception("Expected a digit, 'i', 'l', or 'd'. Got {}".format(c))
+        raise Exception("Expected a digit, 'i', 'l', or 'd'. Got {!r}".format(c))
 
 
 # def parse(s):

@@ -116,7 +116,7 @@ class Torrent(object):
         self._tracker_port = int(m["port"])
         self._tracker_path = m["path"].encode()
         logger.info(
-            "Tracker address: {}, port: {}, path: {}".format(
+            "Tracker address: {!r}, port: {}, path: {!r}".format(
                 self._tracker_address, self._tracker_port, self._tracker_path
             )
         )
