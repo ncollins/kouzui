@@ -36,7 +36,9 @@ def run(log_level, torrent_path, listening_port, download_dir):
         log_level = getattr(logging, log_level.upper())
     else:
         log_level = getattr(logging, "WARNING")
-    logfile = "tmp/{}.log".format(listening_port)  # TODO - directory shouldn't be hardcoded
+    # TODO 2026-03-01: ideally the log location isn't tied to the download location
+    # but this is better for testing than writing to /tmp in a container
+    logfile = "{}/{}.log".format(download_dir, listening_port)
     logging.basicConfig(
         filename=logfile,
         level=log_level,

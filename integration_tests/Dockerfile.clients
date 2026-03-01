@@ -12,8 +12,5 @@ RUN uv sync --frozen --no-dev
 # Copy source code
 COPY src/ ./src/
 
-# main.py writes per-process log files to tmp/{port}.log relative to cwd
-RUN mkdir -p tmp
-
 # Test data (torrent file + partial files) is mounted at /test_data at runtime
 CMD ["uv", "run", "python", "src/main.py"]
