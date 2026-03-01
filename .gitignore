@@ -105,3 +105,6 @@ venv.bak/
 
 # working directory
 tmp/
+
+# test data
+integration_tests/test_data/

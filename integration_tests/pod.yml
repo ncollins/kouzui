@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kouzui-integration-test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: tracker
+      image: localhost/kouzui-tracker:latest
+      imagePullPolicy: Never
+      ports:
+        - containerPort: 8000
+
+    - name: clients
+      image: localhost/kouzui-clients:latest
+      imagePullPolicy: Never
+      # Poll localhost:8000 until the tracker container is accepting connections,
+      # then hand off to the test runner. Both containers share the pod's network
+      # namespace so the tracker is reachable on localhost.
+      command: ["sh", "-c"]
+      args:
+        - |
+          until python3 -c "import socket; socket.create_connection(('localhost', 8000), 1)" 2>/dev/null; do
+            echo "Waiting for tracker..."
+            sleep 1
+          done
+          exec uv run python src/main.py test-run /test_data/test.torrent --test-dir /test_data --number-of-clients 3
+      volumeMounts:
+        - name: test-data
+          mountPath: /test_data
+
+  volumes:
+    - name: test-data
+      hostPath:
+        # Absolute path substituted by the Makefile at run time
+        path: __TEST_DATA_DIR__
+        type: Directory
