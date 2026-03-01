@@ -74,7 +74,10 @@ class Engine(object):
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
         # interact with peer connections
-        self._msg_from_peer = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._msg_from_peer: tuple[
+            trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
+            trio.MemoryReceiveChannel[tuple[peer_state.PeerState, int, bytes]],
+        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: Dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
