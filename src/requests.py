@@ -14,7 +14,7 @@ class RequestManager(object):
     """
 
     def __init__(self):
-        self._requests: Set[Tuple[bytes, Tuple[int, int, int], datetime.datettime]] = set()
+        self._requests: Set[Tuple[bytes, Tuple[int, int, int], datetime.datetime]] = set()
 
     @property
     def size(self):
