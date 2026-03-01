@@ -159,8 +159,7 @@ def parse_peers(data, torrent):
     # TODO this try/except logic probably shouldn't be here as it's not really
     # a bencode issue
     try:
-        peer_list = parse_compact_peers(data)
-        peer_list = [(ip, port, None) for ip, port in peer_list]
+        peer_list = [(ip, port, None) for ip, port in parse_compact_peers(data)]
     except:
         peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]
     return [
