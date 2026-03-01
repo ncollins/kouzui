@@ -64,7 +64,10 @@ class Engine(object):
         self._auto_shutdown = auto_shutdown
         self._state = torrent
         # interact with self
-        self._peers_without_connection = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._peers_without_connection: tuple[
+            trio.MemorySendChannel[peer_state.PeerAddress],
+            trio.MemoryReceiveChannel[peer_state.PeerAddress],
+        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
         self._complete_pieces_to_write = complete_pieces_to_write
         self._write_confirmations = write_confirmations
