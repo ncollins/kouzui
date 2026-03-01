@@ -313,7 +313,7 @@ def make_handler(engine):
     async def handler(stream):
         try:
             peer_info = stream.socket.getpeername()
-            ip: string = peer_info[0]
+            ip: bytes = peer_info[0]
             port: int = peer_info[1]
             peer_address = peer_state.PeerAddress(ip, port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
