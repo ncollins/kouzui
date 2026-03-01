@@ -264,58 +264,59 @@ class Engine(object):
             logger.info("did not handle message because peer {} no longer exists".format(peer_id))
             return
         peer_state = self._peers[peer_id]
-        if msg_type == messages.PeerMsg.CHOKE:
-            logger.info("Received CHOKE from {}".format(peer_id))
-            peer_state.choke_us()
-        elif msg_type == messages.PeerMsg.UNCHOKE:
-            logger.info("Received UNCHOKE from {}".format(peer_id))
-            peer_state.unchoke_us()
-        elif msg_type == messages.PeerMsg.INTERESTED:
-            logger.warning("Received INTERESTED from {} (not implemented)".format(peer_id))  # TODO
-        elif msg_type == messages.PeerMsg.NOT_INTERESTED:
-            logger.warning(
-                "Received NOT_INTERESTED from {} (not implemented)".format(peer_id)
-            )  # TODO
-        elif msg_type == messages.PeerMsg.HAVE:
-            index: int = messages.parse_have(msg_payload)
-            logger.debug("Received HAVE {} from {}".format(index, peer_id))
-            peer_state.get_pieces()[index] = True
-        elif msg_type == messages.PeerMsg.BITFIELD:
-            logger.info("Received BITFIELD from {}".format(peer_id))
-            # TODO would be useful to log what percentage of the file the peer has
-            bitfield = messages.parse_bitfield(msg_payload)
-            peer_state.set_pieces(bitfield)
-        elif msg_type == messages.PeerMsg.REQUEST:
-            incStats("requests_in")
-            request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
-            logger.info("Received REQUEST from {} from {}".format(request_info, peer_state.peer_id))
-            index = request_info[0]
-            if peer_state.is_peer_choked:
+        match msg_type:
+            case messages.PeerMsg.CHOKE:
+                logger.info("Received CHOKE from {}".format(peer_id))
+                peer_state.choke_us()
+            case messages.PeerMsg.UNCHOKE:
+                logger.info("Received UNCHOKE from {}".format(peer_id))
+                peer_state.unchoke_us()
+            case messages.PeerMsg.INTERESTED:
+                logger.warning("Received INTERESTED from {} (not implemented)".format(peer_id))  # TODO
+            case messages.PeerMsg.NOT_INTERESTED:
                 logger.warning(
-                    "{} requested {} but peer is choked".format(peer_state.peer_id, index)
+                    "Received NOT_INTERESTED from {} (not implemented)".format(peer_id)
+                )  # TODO
+            case messages.PeerMsg.HAVE:
+                index: int = messages.parse_have(msg_payload)
+                logger.debug("Received HAVE {} from {}".format(index, peer_id))
+                peer_state.get_pieces()[index] = True
+            case messages.PeerMsg.BITFIELD:
+                logger.info("Received BITFIELD from {}".format(peer_id))
+                # TODO would be useful to log what percentage of the file the peer has
+                bitfield = messages.parse_bitfield(msg_payload)
+                peer_state.set_pieces(bitfield)
+            case messages.PeerMsg.REQUEST:
+                incStats("requests_in")
+                request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
+                logger.info("Received REQUEST from {} from {}".format(request_info, peer_state.peer_id))
+                index = request_info[0]
+                if peer_state.is_peer_choked:
+                    logger.warning(
+                        "{} requested {} but peer is choked".format(peer_state.peer_id, index)
+                    )
+                elif self._state._complete[index]:
+                    await self._blocks_to_read.send((peer_state.peer_id, request_info))
+                else:
+                    logger.warning(
+                        "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
+                    )
+            case messages.PeerMsg.PIECE:
+                (index, begin, data) = messages.parse_piece(msg_payload)
+                incStats("blocks_in")
+                logger.info(
+                    "Received block {} from {}".format((index, begin, len(data)), peer_state.peer_id)
                 )
-            elif self._state._complete[index]:
-                await self._blocks_to_read.send((peer_state.peer_id, request_info))
-            else:
-                logger.warning(
-                    "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
-                )
-        elif msg_type == messages.PeerMsg.PIECE:
-            (index, begin, data) = messages.parse_piece(msg_payload)
-            incStats("blocks_in")
-            logger.info(
-                "Received block {} from {}".format((index, begin, len(data)), peer_state.peer_id)
-            )
-            peer_state.inc_download_counters()
-            await self.handle_block_received(index, begin, data)
-        elif msg_type == messages.PeerMsg.CANCEL:
-            logger.warning("Received CANCEL from {} (not implemented)".format(peer_id))  # TODO
-            request_info = messages.parse_request_or_cancel(msg_payload)
-        else:
-            # TODO - Exceptions are bad here! Should this be assert false?
-            logger.warning("Bad message: length = {}".format(length))
-            logger.warning("Bad message: data = {}".format(data))
-            raise Exception("bad peer message")
+                peer_state.inc_download_counters()
+                await self.handle_block_received(index, begin, data)
+            case messages.PeerMsg.CANCEL:
+                logger.warning("Received CANCEL from {} (not implemented)".format(peer_id))  # TODO
+                request_info = messages.parse_request_or_cancel(msg_payload)
+            case _:
+                # TODO - Exceptions are bad here! Should this be assert false?
+                error_message = "Bad message: msg_type = {}, msg_payload = {}".format(msg_type, msg_payload) 
+                logger.error(error_message)
+                raise Exception(error_message)
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
