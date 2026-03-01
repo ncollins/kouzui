@@ -1,4 +1,4 @@
-.PHONY: typecheck integration-test
+.PHONY: typecheck integration-test unit-test
 
 typecheck:
 	uv run mypy .
