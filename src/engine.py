@@ -123,12 +123,12 @@ class Engine(object):
 
     async def info_loop(self):
         while True:
-            unwritten_blocks = len(self._received_blocks.items())
+            num_unwritten_blocks = len(self._received_blocks.items())
             outstanding_requests = self.requests.size
             logger.info("stats = {}".format(stats))
             logger.info(
                 "{} unwritten blocks, {} outstanding_requests, {}/{} complete pieces".format(
-                    unwritten_blocks,
+                    num_unwritten_blocks,
                     outstanding_requests,
                     sum(self._state._complete),
                     len(self._state._complete),
