@@ -1,4 +1,7 @@
-.PHONY: integration-test
+.PHONY: typecheck integration-test
+
+typecheck:
+	uv run mypy .
 
 TEST_DATA_ABS    := $(abspath integration_tests/test_data)
 POD_MANIFEST_TMP := /tmp/kouzui-pod.yml
@@ -14,3 +17,6 @@ integration-test:
 	podman kube down $(POD_MANIFEST_TMP); \
 	exit $$result
 	uv run integration_tests/test_data.py verify-complete-files integration_tests/test_data test_file.bin
+
+unit-test:
+	uv run pytest .
