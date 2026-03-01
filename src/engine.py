@@ -272,7 +272,9 @@ class Engine(object):
                 logger.info("Received UNCHOKE from {}".format(peer_id))
                 peer_state.unchoke_us()
             case messages.PeerMsg.INTERESTED:
-                logger.warning("Received INTERESTED from {} (not implemented)".format(peer_id))  # TODO
+                logger.warning(
+                    "Received INTERESTED from {} (not implemented)".format(peer_id)
+                )  # TODO
             case messages.PeerMsg.NOT_INTERESTED:
                 logger.warning(
                     "Received NOT_INTERESTED from {} (not implemented)".format(peer_id)
@@ -289,7 +291,9 @@ class Engine(object):
             case messages.PeerMsg.REQUEST:
                 incStats("requests_in")
                 request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
-                logger.info("Received REQUEST from {} from {}".format(request_info, peer_state.peer_id))
+                logger.info(
+                    "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
+                )
                 index = request_info[0]
                 if peer_state.is_peer_choked:
                     logger.warning(
@@ -305,7 +309,9 @@ class Engine(object):
                 (index, begin, data) = messages.parse_piece(msg_payload)
                 incStats("blocks_in")
                 logger.info(
-                    "Received block {} from {}".format((index, begin, len(data)), peer_state.peer_id)
+                    "Received block {} from {}".format(
+                        (index, begin, len(data)), peer_state.peer_id
+                    )
                 )
                 peer_state.inc_download_counters()
                 await self.handle_block_received(index, begin, data)
@@ -314,7 +320,9 @@ class Engine(object):
                 request_info = messages.parse_request_or_cancel(msg_payload)
             case _:
                 # TODO - Exceptions are bad here! Should this be assert false?
-                error_message = "Bad message: msg_type = {}, msg_payload = {}".format(msg_type, msg_payload) 
+                error_message = "Bad message: msg_type = {}, msg_payload = {}".format(
+                    msg_type, msg_payload
+                )
                 logger.error(error_message)
                 raise Exception(error_message)
 
