@@ -4,6 +4,11 @@ A Bittorrent client written in Python to learn more about writing concurrent net
 I worked on this while attending [Recurse Center](https://www.recurse.com/) during the summer of 2018.
 It uses the [Trio](https://trio.readthedocs.io) library for concurrent networking.
 
+The original code, warts and all, is in the branch `v1-recurse-center-2018`.
+
+In February 2026 I began updating the project as an experiment in using AI agents for maintenance 
+work: updating dependencies, adding tests, and improving type checking.
+
 ## Installation and running
 
 Kouzui uses the async/await syntax added in Python 3.5, so it will not run on earlier versions of Python.
