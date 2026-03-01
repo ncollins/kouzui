@@ -134,15 +134,15 @@ class Engine(object):
                     len(self._state._complete),
                 )
             )
-            if (
-                sum(self._state._complete) - len(self._state._complete) - sum(self._state._complete)
-                > 0.97
+            # TODO 2026-03-01: Fixes were made to this if statement and logging, but as the
+            # block is not triggered by the current integration tests it will need to be
+            # verified at some point in the future.
+            if (sum(self._state._complete) / len(self._state._complete) > 0.97) or (
+                len(self._state._complete) - sum(self._state._complete) < 2
             ):
                 logger.info("Outstanding requests = {}".format(self.requests._requests))
                 unwritten_blocks = [
-                    (i, b, len(data))
-                    for i, blocks in self._received_blocks.items()
-                    for b, data in blocks
+                    (i, b, len(data)) for i, (b, data) in self._received_blocks.items()
                 ]
                 logger.info("Unwritten blocks: {}".format(unwritten_blocks))
             channels = [
