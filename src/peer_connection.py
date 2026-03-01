@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, List
+from typing import Any, Optional, Tuple, List
 
 import bitarray
 import trio
@@ -126,10 +126,10 @@ class PeerEngine(object):
         self._main_engine = engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
-        self._peer_id_and_state = None
+        self._peer_id_and_state: Optional[Tuple[Any, peer_state.PeerState]] = None
         self._peer_stream = PeerStream(stream, engine.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
-        self._receive_outgoing_data = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[Tuple[str, Any]]] = None
 
     async def run(self, initiate=True):
         try:
@@ -197,6 +197,7 @@ class PeerEngine(object):
         logger.debug("Sent handshake to {}".format(self._peer_address))
 
     async def receiving_loop(self):
+        assert self._peer_id_and_state is not None
         peer_id = self._peer_id_and_state[0]
         while True:
             logging.debug("receiving_loop for {}".format(peer_id))
@@ -229,6 +230,8 @@ class PeerEngine(object):
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self):
+        assert self._peer_id_and_state is not None
+        assert self._receive_outgoing_data is not None
         logger.debug("About to send bitfield to {}".format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.debug("Sent bitfield to {}".format(self._peer_id_and_state[0]))
