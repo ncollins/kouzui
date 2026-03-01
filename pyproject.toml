@@ -9,6 +9,7 @@ dependencies = [
     "h11==0.16.0",
     "pytest>=9.0.2",
     "trio==0.23.2",
+    "trio-typing>=0.10.0",
     "typer>=0.24.1",
 ]
 
