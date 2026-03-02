@@ -2,6 +2,7 @@
 
 typecheck:
 	uv run mypy .
+	uv run ty check .
 
 TEST_DATA_ABS    := $(abspath integration_tests/test_data)
 POD_MANIFEST_TMP := /tmp/kouzui-pod.yml
