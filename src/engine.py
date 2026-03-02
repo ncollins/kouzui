@@ -4,7 +4,7 @@ import io
 import logging
 import math
 import random
-from typing import List, Dict, Tuple, Any
+from typing import Any
 
 import bitarray
 import trio
@@ -79,9 +79,9 @@ class Engine(object):
             trio.MemoryReceiveChannel[tuple[peer_state.PeerState, int, bytes]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
-        self._peers: Dict[bytes, peer_state.PeerState] = dict()
+        self._peers: dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
-        self._received_blocks: Dict[int, Tuple[bitarray.bitarray, bytearray]] = dict()
+        self._received_blocks: dict[int, tuple[bitarray.bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
@@ -200,7 +200,7 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: List[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
+    async def update_peers(self, peers: list[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
                 logger.info("Peer already exists: {!r}".format(peer_id))
@@ -293,7 +293,7 @@ class Engine(object):
                 peer_state.set_pieces(bitfield)
             case messages.PeerMsg.REQUEST:
                 incStats("requests_in")
-                request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
+                request_info: tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )

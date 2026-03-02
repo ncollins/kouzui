@@ -3,7 +3,7 @@ import logging
 import os
 import random
 import re
-from typing import NamedTuple, List
+from typing import NamedTuple
 
 import bitarray
 
@@ -51,11 +51,11 @@ def _generate_peer_id() -> bytes:
     return "".join(_random_char() for _ in range(0, 20)).encode()
 
 
-def _parse_pieces(bstring: bytes) -> List[bytes]:
+def _parse_pieces(bstring: bytes) -> list[bytes]:
     if (len(bstring) % 20) != 0:
         raise Exception("'pieces' is not a multiple of 20'")
     else:
-        pieces: List[bytes] = []
+        pieces: list[bytes] = []
         i = 0
         while i + 20 <= len(bstring):
             pieces.append(bstring[i : i + 20])

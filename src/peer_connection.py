@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Tuple, List, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 import trio
 
@@ -51,8 +51,8 @@ class PeerStream(object):
         logger.debug("Final incoming handshake data {}".format(data))
         return handshake_data
 
-    def _parse_msg_data(self) -> List[Tuple[int, bytes]]:
-        messages: List[Tuple[int, bytes]] = []
+    def _parse_msg_data(self) -> list[tuple[int, bytes]]:
+        messages: list[tuple[int, bytes]] = []
         msg_length = None
         while True:
             total_length = len(self._msg_data)
@@ -69,7 +69,7 @@ class PeerStream(object):
                         "Parsed message of length {} from {}".format(msg_length, self._stream)
                     )
 
-    async def receive_message(self) -> List[Tuple[int, bytes]]:
+    async def receive_message(self) -> list[tuple[int, bytes]]:
         logger.debug("Called receive_message for {}".format(self._stream))
         while True:
             messages = self._parse_msg_data()
@@ -132,10 +132,10 @@ class PeerEngine(object):
         self._main_engine: engine.Engine = main_engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
-        self._peer_id_and_state: Optional[Tuple[Any, peer_state.PeerState]] = None
+        self._peer_id_and_state: Optional[tuple[Any, peer_state.PeerState]] = None
         self._peer_stream = PeerStream(stream, main_engine.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
-        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[Tuple[str, Any]]] = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[tuple[str, Any]]] = None
 
     async def run(self, initiate=True):
         peer_id = None

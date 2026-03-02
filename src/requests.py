@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import Tuple, Set
+from typing import Set
 
 logger = logging.getLogger("requests")
 
@@ -12,13 +12,13 @@ class RequestManager(object):
     """
 
     def __init__(self):
-        self._requests: Set[Tuple[bytes, Tuple[int, int, int], datetime.datetime]] = set()
+        self._requests: Set[tuple[bytes, tuple[int, int, int], datetime.datetime]] = set()
 
     @property
     def size(self):
         return len(self._requests)
 
-    def add_request(self, peer_id: bytes, block: Tuple[int, int, int]):
+    def add_request(self, peer_id: bytes, block: tuple[int, int, int]):
         self._requests.add((peer_id, block, datetime.datetime.now()))
 
     def delete_all_for_piece(self, index: int):
@@ -43,5 +43,5 @@ class RequestManager(object):
         new_len = len(self._requests)
         return prev_len - new_len
 
-    def existing_requests_for_peer(self, peer_id: bytes) -> Set[Tuple[int, int, int]]:
+    def existing_requests_for_peer(self, peer_id: bytes) -> Set[tuple[int, int, int]]:
         return set(r for p_id, r, _ in self._requests if p_id == peer_id)
