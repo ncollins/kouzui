@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     import torrent
 import peer_messages
 import peer_state
+from internal_messages import BlockForPeer
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -271,20 +272,20 @@ class PeerEngine(object):
                         )
                     )
             elif command == "block_to_upload":
-                (index, begin, length), block_data = data
+                assert isinstance(data, BlockForPeer)
                 raw_msg = bytes([peer_messages.PeerMsg.PIECE])
-                raw_msg += (index).to_bytes(4, byteorder="big")
-                raw_msg += (begin).to_bytes(4, byteorder="big")
-                raw_msg += block_data
+                raw_msg += (data.index).to_bytes(4, byteorder="big")
+                raw_msg += (data.begin).to_bytes(4, byteorder="big")
+                raw_msg += data.data
                 logger.debug(
                     "Pre-send PIECE {} to {!r}".format(
-                        (index, begin, length), self._peer_id_and_state[0]
+                        (data.index, data.begin, data.length), self._peer_id_and_state[0]
                     )
                 )
                 await self._peer_stream.send_message(raw_msg)
                 logger.debug(
                     "Sent PIECE {} to {!r}".format(
-                        (index, begin, length), self._peer_id_and_state[0]
+                        (data.index, data.begin, data.length), self._peer_id_and_state[0]
                     )
                 )
             elif command == "announce_have_piece":

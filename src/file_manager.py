@@ -6,6 +6,7 @@ from typing import Any
 import trio
 
 import torrent as tstate
+from internal_messages import BlockForPeer, BlockToRead, CompletePieceToWrite, WriteConfirmation
 
 logger = logging.getLogger("file_manager")
 
@@ -75,10 +76,10 @@ class FileManager(object):
         self,
         *,
         file_wrapper: FileWrapper,
-        pieces_to_write: trio.MemoryReceiveChannel,
-        write_confirmations: trio.MemorySendChannel,
-        blocks_to_read: trio.MemoryReceiveChannel,
-        blocks_for_peers: trio.MemorySendChannel,
+        pieces_to_write: trio.MemoryReceiveChannel[CompletePieceToWrite],
+        write_confirmations: trio.MemorySendChannel[WriteConfirmation],
+        blocks_to_read: trio.MemoryReceiveChannel[BlockToRead],
+        blocks_for_peers: trio.MemorySendChannel[BlockForPeer],
     ) -> None:
         self._file_wrapper = file_wrapper
         self._pieces_to_write = pieces_to_write
@@ -96,16 +97,25 @@ class FileManager(object):
 
     async def piece_writing_loop(self):
         while True:
-            index, piece = await self._pieces_to_write.receive()
-            if (index is None) and (piece is None):  # TODO better msg types
+            msg = await self._pieces_to_write.receive()
+            if (msg.index is None) and (msg.data is None):
                 self._file_wrapper.move_file_to_final_location()
             else:
-                self._file_wrapper.write_piece(index, piece)
-                logger.info("Wrote #{} to disk".format(index))
-                await self._write_confirmations.send(index)
+                assert msg.index is not None and msg.data is not None
+                self._file_wrapper.write_piece(msg.index, msg.data)
+                logger.info("Wrote #{} to disk".format(msg.index))
+                await self._write_confirmations.send(WriteConfirmation(index=msg.index))
 
     async def block_reading_loop(self):
         while True:
-            who, (index, begin, length) = await self._blocks_to_read.receive()
-            block = self._file_wrapper.read_block(index, begin, length)
-            await self._blocks_for_peers.send((who, (index, begin, length), block))
+            msg = await self._blocks_to_read.receive()
+            block = self._file_wrapper.read_block(msg.index, msg.begin, msg.length)
+            await self._blocks_for_peers.send(
+                BlockForPeer(
+                    peer_id=msg.peer_id,
+                    index=msg.index,
+                    begin=msg.begin,
+                    length=msg.length,
+                    data=block,
+                )
+            )
