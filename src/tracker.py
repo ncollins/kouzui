@@ -65,4 +65,4 @@ async def query(torrent: torrent.Torrent, event) -> bytes:
     await h.send_event(h11.EndOfMessage())
 
     response, data = await h.receive_with_data()
-    return b"".join(d.data for d in data)
+    return b"".join(d.data for d in data if isinstance(d, h11.Data))
