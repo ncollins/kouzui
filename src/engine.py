@@ -225,16 +225,16 @@ class Engine(object):
         if not self._peers:
             logger.info("Not making new requests as there are no peers")
             return
-        for address, peer_state in self._peers.items():
-            if peer_state.is_client_choked:
+        for address, peer in self._peers.items():
+            if peer.is_client_choked:
                 continue
             # TODO don't read private field of another object
-            targets = (~self._state._complete) & peer_state._pieces
+            targets = (~self._state._complete) & peer._pieces
             target_index = _pick_random_one_in_bitarray(targets)
             if target_index is not None:
                 logger.info(
                     "{!r}: self any? {}, peer any? {}, target_index = {}".format(
-                        address, self._state._complete.any(), peer_state._pieces.any(), target_index
+                        address, self._state._complete.any(), peer._pieces.any(), target_index
                     )
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
@@ -258,7 +258,7 @@ class Engine(object):
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         incStats("requests_out")
-                    await peer_state.send_outgoing_data.send(("blocks_to_request", new_requests))
+                    await peer.send_outgoing_data.send(("blocks_to_request", new_requests))
             else:
                 logger.info("No target pieces for {!r}".format(address))
 
