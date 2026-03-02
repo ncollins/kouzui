@@ -85,15 +85,15 @@ class PeerStream(object):
                 self._msg_data += data
 
     async def send_message(self, msg: bytes) -> None:
-        l = len(msg)
-        data = l.to_bytes(4, byteorder="big") + msg
-        logger.debug("Pre-send message of length {} on {}".format(l, self._stream))
+        message_length = len(msg)
+        data = message_length.to_bytes(4, byteorder="big") + msg
+        logger.debug("Pre-send message of length {} on {}".format(message_length, self._stream))
         if self._token_bucket is not None:
             while not self._token_bucket.check_and_decrement(len(data)):
                 logger.debug("Token bucket is empty waiting 0.1s")
                 await trio.sleep(self._token_bucket.update_period)
         await self._stream.send_all(data)
-        logger.debug("Sent message of length {} on {}".format(l, self._stream))
+        logger.debug("Sent message of length {} on {}".format(message_length, self._stream))
 
     async def send_handshake(self, info_hash, peer_id):
         handshake_data = b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id

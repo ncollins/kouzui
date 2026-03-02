@@ -42,13 +42,13 @@ def parse_int(s: BinaryIO) -> int:
 
 
 def parse_list(s: BinaryIO) -> list[Any]:
-    l: list = []
+    xs: list = []
     while True:
         v = parse_value(s)
         if v is None:
-            return l
+            return xs
         else:
-            l.append(v)
+            xs.append(v)
 
 
 def parse_dict(s: BinaryIO) -> dict[bytes, Any]:
@@ -117,8 +117,8 @@ def encode_int(i: int) -> bytes:
     return b"i%de" % i
 
 
-def encode_list(l: list[Any]) -> bytes:
-    inner = b"".join(encode_value(v) for v in l)
+def encode_list(xs: list[Any]) -> bytes:
+    inner = b"".join(encode_value(x) for x in xs)
     return b"l%se" % inner
 
 

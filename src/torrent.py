@@ -55,12 +55,12 @@ def _parse_pieces(bstring: bytes) -> List[bytes]:
     if (len(bstring) % 20) != 0:
         raise Exception("'pieces' is not a multiple of 20'")
     else:
-        l: List[bytes] = []
+        pieces: List[bytes] = []
         i = 0
         while i + 20 <= len(bstring):
-            l.append(bstring[i : i + 20])
+            pieces.append(bstring[i : i + 20])
             i += 20
-        return l
+        return pieces
 
 
 class Torrent(object):
