@@ -4,6 +4,7 @@ import io
 import logging
 import math
 import random
+from enum import StrEnum
 from typing import Any
 
 import bitarray
@@ -59,12 +60,11 @@ def _pick_random_one_in_bitarray(b: bitarray.bitarray) -> int | None:
         return None
 
 
-stats = {"requests_in": 0, "blocks_out": 0, "requests_out": 0, "blocks_in": 0}
-
-
-def incStats(field):
-    stats[field] += 1
-    logger.debug("stats updated: {}".format(stats))
+class StatField(StrEnum):
+    REQUESTS_IN  = "requests_in"
+    REQUESTS_OUT = "requests_out"
+    BLOCKS_IN    = "blocks_in"
+    BLOCKS_OUT   = "blocks_out"
 
 
 class Engine(object):
@@ -100,11 +100,16 @@ class Engine(object):
         # data received but not written to disk
         self._received_blocks: dict[int, tuple[bitarray.bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
+        self._stats: dict[StatField, int] = {f: 0 for f in StatField}
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
             self.token_bucket: TokenBucket | None = None
         else:
             self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
+
+    def _inc_stats(self, field: StatField) -> None:
+        self._stats[field] += 1
+        logger.debug("stats updated: {}".format(self._stats))
 
     @property
     def peer_messages(self) -> trio.MemorySendChannel:
@@ -143,7 +148,7 @@ class Engine(object):
         while True:
             num_unwritten_blocks = len(self._received_blocks.items())
             outstanding_requests = self.requests.size
-            logger.info("stats = {}".format(stats))
+            logger.info("stats = {}".format(self._stats))
             logger.info(
                 "{} unwritten blocks, {} outstanding_requests, {}/{} complete pieces".format(
                     num_unwritten_blocks,
@@ -274,7 +279,7 @@ class Engine(object):
                 if new_requests:
                     for r in new_requests:
                         self.requests.add_request(address, r)
-                        incStats("requests_out")
+                        self._inc_stats(StatField.REQUESTS_OUT)
                     await peer.send_outgoing_data.send(("blocks_to_request", new_requests))
             else:
                 logger.info("No target pieces for {!r}".format(address))
@@ -309,7 +314,7 @@ class Engine(object):
                 bitfield = messages.parse_bitfield(msg_payload)
                 peer_state.set_pieces(bitfield)
             case messages.PeerMsg.REQUEST:
-                incStats("requests_in")
+                self._inc_stats(StatField.REQUESTS_IN)
                 request_info: tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
@@ -327,7 +332,7 @@ class Engine(object):
                     )
             case messages.PeerMsg.PIECE:
                 (index, begin, data) = messages.parse_piece(msg_payload)
-                incStats("blocks_in")
+                self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
                     "Received block {} from {}".format(
                         (index, begin, len(data)), peer_state.peer_id
@@ -404,7 +409,7 @@ class Engine(object):
         while True:
             logger.debug("file_reading_loop")
             peer_id, block_details, block = await self._blocks_for_peers.receive()
-            incStats("blocks_out")
+            self._inc_stats(StatField.BLOCKS_OUT)
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
                 p_state.inc_upload_counters()
