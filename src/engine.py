@@ -22,7 +22,13 @@ import torrent as state
 import tracker
 
 import config
-from internal_messages import BlockForPeer, BlockToRead, CompletePieceToWrite, WriteConfirmation
+from internal_messages import (
+    AllPiecesWritten,
+    BlockForPeer,
+    BlockToRead,
+    CompletePieceToWrite,
+    WriteConfirmation,
+)
 
 logger = logging.getLogger("engine")
 
@@ -73,7 +79,7 @@ class Engine(object):
         self,
         *,
         torrent: state.Torrent,
-        complete_pieces_to_write: trio.MemorySendChannel[CompletePieceToWrite],
+        complete_pieces_to_write: trio.MemorySendChannel[CompletePieceToWrite | AllPiecesWritten],
         write_confirmations: trio.MemoryReceiveChannel[WriteConfirmation],
         blocks_to_read: trio.MemorySendChannel[BlockToRead],
         blocks_for_peers: trio.MemoryReceiveChannel[BlockForPeer],
@@ -87,9 +93,9 @@ class Engine(object):
             trio.MemoryReceiveChannel[peer_state.PeerAddress],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
-        self._complete_pieces_to_write: trio.MemorySendChannel[CompletePieceToWrite] = (
-            complete_pieces_to_write
-        )
+        self._complete_pieces_to_write: trio.MemorySendChannel[
+            CompletePieceToWrite | AllPiecesWritten
+        ] = complete_pieces_to_write
         self._write_confirmations: trio.MemoryReceiveChannel[WriteConfirmation] = (
             write_confirmations
         )
@@ -143,14 +149,10 @@ class Engine(object):
             if (
                 self._auto_shutdown and all(complete_peers) and self._state._complete.all()
             ):  # TODO remove private variable access
-                await self._complete_pieces_to_write.send(
-                    CompletePieceToWrite(index=None, data=None)
-                )
+                await self._complete_pieces_to_write.send(AllPiecesWritten())
                 raise KeyboardInterrupt  # TODO should use a better exception, or something else entirely
             elif self._state._complete.all():  # TODO remove private variable access
-                await self._complete_pieces_to_write.send(
-                    CompletePieceToWrite(index=None, data=None)
-                )
+                await self._complete_pieces_to_write.send(AllPiecesWritten())
             await trio.sleep(2)
 
     async def info_loop(self) -> None:
@@ -501,9 +503,9 @@ def run(torrent):
                 if piece_info.sha1hash == h:
                     torrent._complete[index] = True  # TODO remove private property access
 
-        s_complete_pieces, r_complete_pieces = trio.open_memory_channel[CompletePieceToWrite](
-            config.INTERNAL_QUEUE_SIZE
-        )
+        s_complete_pieces, r_complete_pieces = trio.open_memory_channel[
+            CompletePieceToWrite | AllPiecesWritten
+        ](config.INTERNAL_QUEUE_SIZE)
         s_write_confirmations, r_write_confirmations = trio.open_memory_channel[WriteConfirmation](
             config.INTERNAL_QUEUE_SIZE
         )

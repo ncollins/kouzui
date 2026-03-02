@@ -3,8 +3,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CompletePieceToWrite:
-    index: int | None
-    data: bytes | None
+    index: int
+    data: bytes
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class AllPiecesWritten:
+    pass
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
