@@ -141,7 +141,7 @@ class PeerEngine(object):
         peer_id = None
         try:
             # Do handshakes before starting main loops
-            if initiate == True:
+            if initiate:
                 await self.send_handshake()
                 peer_id = await self.receive_handshake()
             else:
