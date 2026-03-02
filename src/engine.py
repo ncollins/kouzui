@@ -200,12 +200,12 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
+    async def update_peers(self, peers: List[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
-                logger.info("Peer already exists: {}".format(peer_id))
+                logger.info("Peer already exists: {!r}".format(peer_id))
             else:
-                logger.info("Adding new peer to queue: {!r} / {}".format(address, peer_id))
+                logger.info("Adding new peer to queue: {!r} / {!r}".format(address, peer_id))
                 await self._peers_without_connection[0].send(address)
 
     def _blocks_from_index(self, index):
