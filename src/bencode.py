@@ -1,11 +1,18 @@
 # encode and decode the Bittorrent serialization format
 # http://www.bittorrent.org/beps/bep_0003.html
 
+from __future__ import annotations
+
 import collections
 import io
+from typing import Any, BinaryIO, TYPE_CHECKING
 
 
-def parse_string_length(s: io.BytesIO, i: bytes = b""):
+if TYPE_CHECKING:
+    import torrent
+
+
+def parse_string_length(s: BinaryIO, i: bytes = b"") -> int:
     # Take string from the front and return the rest
     c = s.read(1)
     while c.isdigit():
@@ -18,11 +25,11 @@ def parse_string_length(s: io.BytesIO, i: bytes = b""):
         raise Exception("String length should be terminated by ':'")
 
 
-def parse_string(s: io.BytesIO, n: int):
+def parse_string(s: BinaryIO, n: int) -> bytes:
     return s.read(n)
 
 
-def parse_int(s: io.BytesIO):
+def parse_int(s: BinaryIO) -> int:
     i = b""
     c = s.read(1)
     while c.isdigit():
@@ -35,7 +42,7 @@ def parse_int(s: io.BytesIO):
         raise Exception("Integer not terminated by 'e'")
 
 
-def parse_list(s: io.BytesIO):
+def parse_list(s: BinaryIO) -> list[Any]:
     l: list = []
     while True:
         v = parse_value(s)
@@ -45,7 +52,7 @@ def parse_list(s: io.BytesIO):
             l.append(v)
 
 
-def parse_dict(s: io.BytesIO):
+def parse_dict(s: BinaryIO) -> dict[bytes, Any]:
     d: dict = collections.OrderedDict()
     while True:
         k = parse_value(s)
@@ -56,7 +63,7 @@ def parse_dict(s: io.BytesIO):
             d[k] = v
 
 
-def parse_value(s: io.BytesIO):
+def parse_value(s: BinaryIO) -> int | bytes | list[Any] | dict[bytes, Any] | None:
     # `s` is a string stream object
     # look at first character
     # digit -> string
@@ -99,29 +106,29 @@ def parse_value(s: io.BytesIO):
 #    raise Exception("No 'info' key found")
 
 
-def encode_bytes(s):
+def encode_bytes(s: bytes) -> bytes:
     return b"%d:%s" % (len(s), s)
 
 
-def encode_string(s):
+def encode_string(s: str) -> bytes:
     return encode_bytes(s.encode())
 
 
-def encode_int(i):
+def encode_int(i: int) -> bytes:
     return b"i%de" % i
 
 
-def encode_list(l):
+def encode_list(l: list[Any]) -> bytes:
     inner = b"".join(encode_value(v) for v in l)
     return b"l%se" % inner
 
 
-def encode_dict(d):
+def encode_dict(d: dict[bytes, Any]) -> bytes:
     inner = b"".join(encode_value(k) + encode_value(v) for k, v in d.items())
     return b"d%se" % inner
 
 
-def encode_value(v):
+def encode_value(v: int | bytes | str | list[Any] | dict[bytes, Any]) -> bytes:
     if isinstance(v, bytes):
         return encode_bytes(v)
     elif isinstance(v, str):
@@ -148,20 +155,22 @@ def parse_compact_peers(raw_bytes: bytes) -> list[tuple[bytes, int]]:
         return peers
 
 
-def replace_with_localhost(tripple):
+def replace_with_localhost(
+    tripple: tuple[bytes, int, bytes | None],
+) -> tuple[bytes, int, bytes | None]:
     if tripple[0] == b"::1":
         return (b"localhost", tripple[1], tripple[2])
     else:
         return tripple
 
 
-def parse_peers(data, torrent):
+def parse_peers(data: bytes, torrent: torrent.Torrent) -> list[tuple[bytes, int, bytes | None]]:
     # TODO this try/except logic probably shouldn't be here as it's not really
     # a bencode issue
     try:
         peer_list = [(ip, port, None) for ip, port in parse_compact_peers(data)]
     except:
-        peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]
+        peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]  # type: ignore
     return [
         replace_with_localhost(tripple)
         for tripple in peer_list
