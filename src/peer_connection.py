@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Optional, TYPE_CHECKING
 
 import trio
@@ -316,8 +317,8 @@ async def start_peer_engine(engine, peer_address, stream, initiate=True):
     await peer_engine.run(initiate=True)
 
 
-def make_handler(engine):
-    async def handler(stream):
+def make_handler(engine: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[None]]:
+    async def handler(stream: trio.SocketStream) -> None:
         peer_address = None
         try:
             peer_info = stream.socket.getpeername()
