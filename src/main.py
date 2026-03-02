@@ -102,7 +102,7 @@ def test(test_dir, torrent_path, number_of_clients):
 
         shutil.copy(test_file, tmp_file)
 
-        p = mp.Process(target=run, args=("WARNING", torrent_path, 50000 + i, client_dir))
+        p = mp.Process(target=run, args=("INFO", torrent_path, 50000 + i, client_dir))
         client_processes.append((p, final_file, tmp_file))
 
     torrent_start_time = time.perf_counter()
