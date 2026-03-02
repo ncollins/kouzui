@@ -13,7 +13,7 @@ import trio
 import bencode
 import display
 import file_manager
-import messages
+import peer_messages
 import peer_connection
 import requests
 import peer_state
@@ -296,32 +296,34 @@ class Engine(object):
             return
         peer_state = self._peers[peer_id]
         match msg_type:
-            case messages.PeerMsg.CHOKE:
+            case peer_messages.PeerMsg.CHOKE:
                 logger.info("Received CHOKE from {!r}".format(peer_id))
                 peer_state.choke_us()
-            case messages.PeerMsg.UNCHOKE:
+            case peer_messages.PeerMsg.UNCHOKE:
                 logger.info("Received UNCHOKE from {!r}".format(peer_id))
                 peer_state.unchoke_us()
-            case messages.PeerMsg.INTERESTED:
+            case peer_messages.PeerMsg.INTERESTED:
                 logger.warning(
                     "Received INTERESTED from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-            case messages.PeerMsg.NOT_INTERESTED:
+            case peer_messages.PeerMsg.NOT_INTERESTED:
                 logger.warning(
                     "Received NOT_INTERESTED from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-            case messages.PeerMsg.HAVE:
-                index: int = messages.parse_have(msg_payload)
+            case peer_messages.PeerMsg.HAVE:
+                index: int = peer_messages.parse_have(msg_payload)
                 logger.debug("Received HAVE {} from {!r}".format(index, peer_id))
                 peer_state.get_pieces()[index] = True
-            case messages.PeerMsg.BITFIELD:
+            case peer_messages.PeerMsg.BITFIELD:
                 logger.info("Received BITFIELD from {!r}".format(peer_id))
                 # TODO would be useful to log what percentage of the file the peer has
-                bitfield = messages.parse_bitfield(msg_payload)
+                bitfield = peer_messages.parse_bitfield(msg_payload)
                 peer_state.set_pieces(bitfield)
-            case messages.PeerMsg.REQUEST:
+            case peer_messages.PeerMsg.REQUEST:
                 self._inc_stats(StatField.REQUESTS_IN)
-                request_info: tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
+                request_info: tuple[int, int, int] = peer_messages.parse_request_or_cancel(
+                    msg_payload
+                )
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )
@@ -336,8 +338,8 @@ class Engine(object):
                     logger.warning(
                         "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
                     )
-            case messages.PeerMsg.PIECE:
-                (index, begin, data) = messages.parse_piece(msg_payload)
+            case peer_messages.PeerMsg.PIECE:
+                (index, begin, data) = peer_messages.parse_piece(msg_payload)
                 self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
                     "Received block {} from {}".format(
@@ -346,11 +348,11 @@ class Engine(object):
                 )
                 peer_state.inc_download_counters()
                 await self.handle_block_received(index, begin, data)
-            case messages.PeerMsg.CANCEL:
+            case peer_messages.PeerMsg.CANCEL:
                 logger.warning(
                     "Received CANCEL from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-                request_info = messages.parse_request_or_cancel(msg_payload)
+                request_info = peer_messages.parse_request_or_cancel(msg_payload)
             case _:
                 # TODO - Exceptions are bad here! Should this be assert false?
                 error_message = "Bad message: msg_type = {}, msg_payload = {!r}".format(

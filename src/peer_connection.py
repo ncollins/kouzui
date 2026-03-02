@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     import engine
     import token_bucket
     import torrent
-import messages
+import peer_messages
 import peer_state
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
@@ -230,16 +230,16 @@ class PeerEngine(object):
 
     async def send_bitfield(self) -> None:
         raw_pieces = self._tstate._complete  # TODO don't use private property
-        raw_msg = bytes([messages.PeerMsg.BITFIELD])
+        raw_msg = bytes([peer_messages.PeerMsg.BITFIELD])
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
     async def send_choke(self) -> None:
-        raw_msg = bytes([messages.PeerMsg.CHOKE])
+        raw_msg = bytes([peer_messages.PeerMsg.CHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def send_unchoke(self) -> None:
-        raw_msg = bytes([messages.PeerMsg.UNCHOKE])
+        raw_msg = bytes([peer_messages.PeerMsg.UNCHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self) -> None:
@@ -255,7 +255,7 @@ class PeerEngine(object):
                 command, data = await self._receive_outgoing_data.receive()
             if command == "blocks_to_request":
                 for index, begin, length in data:
-                    raw_msg = bytes([messages.PeerMsg.REQUEST])
+                    raw_msg = bytes([peer_messages.PeerMsg.REQUEST])
                     raw_msg += (index).to_bytes(4, byteorder="big")
                     raw_msg += (begin).to_bytes(4, byteorder="big")
                     raw_msg += (length).to_bytes(4, byteorder="big")
@@ -272,7 +272,7 @@ class PeerEngine(object):
                     )
             elif command == "block_to_upload":
                 (index, begin, length), block_data = data
-                raw_msg = bytes([messages.PeerMsg.PIECE])
+                raw_msg = bytes([peer_messages.PeerMsg.PIECE])
                 raw_msg += (index).to_bytes(4, byteorder="big")
                 raw_msg += (begin).to_bytes(4, byteorder="big")
                 raw_msg += block_data
@@ -288,7 +288,7 @@ class PeerEngine(object):
                     )
                 )
             elif command == "announce_have_piece":
-                raw_msg = bytes([messages.PeerMsg.HAVE])
+                raw_msg = bytes([peer_messages.PeerMsg.HAVE])
                 raw_msg += (data).to_bytes(4, byteorder="big")
                 logger.debug("Pre-send HAVE {} to {!r}".format(data, self._peer_id_and_state[0]))
                 await self._peer_stream.send_message(raw_msg)
