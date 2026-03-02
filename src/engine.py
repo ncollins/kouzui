@@ -17,7 +17,7 @@ import messages
 import peer_connection
 import requests
 import peer_state
-from token_bucket import NullBucket, TokenBucket
+from token_bucket import TokenBucket
 import torrent as state
 import tracker
 
@@ -86,7 +86,7 @@ class Engine(object):
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
-            self.token_bucket: Union[NullBucket, TokenBucket] = NullBucket()
+            self.token_bucket: TokenBucket | None = None
         else:
             self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
 
@@ -108,7 +108,8 @@ class Engine(object):
             nursery.start_soon(
                 self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS
             )
-            nursery.start_soon(self.token_bucket.loop)
+            if self.token_bucket is not None:
+                nursery.start_soon(self.token_bucket.loop)
 
     async def control_loop(self):
         while True:

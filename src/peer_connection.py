@@ -8,6 +8,7 @@ import trio
 
 if TYPE_CHECKING:
     import engine
+    import token_bucket
 import messages
 import peer_state
 
@@ -25,7 +26,7 @@ class PeerStream(object):
     until it has enough.
     """
 
-    def __init__(self, stream, token_bucket=None):
+    def __init__(self, stream, token_bucket: token_bucket.TokenBucket | None = None):
         self._stream = stream
         self._msg_data = b""
         self._token_bucket = token_bucket
@@ -87,9 +88,10 @@ class PeerStream(object):
         l = len(msg)
         data = l.to_bytes(4, byteorder="big") + msg
         logger.debug("Pre-send message of length {} on {}".format(l, self._stream))
-        while not self._token_bucket.check_and_decrement(len(data)):
-            logger.debug("Token bucket is empty waiting 0.1s")
-            await trio.sleep(self._token_bucket.update_period)
+        if self._token_bucket is not None:
+            while not self._token_bucket.check_and_decrement(len(data)):
+                logger.debug("Token bucket is empty waiting 0.1s")
+                await trio.sleep(self._token_bucket.update_period)
         await self._stream.send_all(data)
         logger.debug("Sent message of length {} on {}".format(l, self._stream))
 
