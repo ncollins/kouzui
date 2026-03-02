@@ -9,6 +9,7 @@ dependencies = [
     "h11==0.16.0",
     "pytest>=9.0.2",
     "trio==0.23.2",
+    "trio-typing>=0.10.0",
     "typer>=0.24.1",
 ]
 
@@ -22,6 +23,7 @@ dev = [
 [tool.mypy]
 python_version = 3.11
 ignore_missing_imports = true
+check_untyped_defs = true
 
 [tool.pytest.ini_options]
 addopts = [

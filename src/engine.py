@@ -1,10 +1,11 @@
 import datetime
+import collections
 import hashlib
 import io
 import logging
 import math
 import random
-from typing import List, Dict, Tuple, Set, Union
+from typing import List, Dict, Tuple, Set, Union, Any
 
 import bitarray
 import trio
@@ -16,7 +17,7 @@ import messages
 import peer_connection
 import requests
 import peer_state
-from token_bucket import NullBucket, TokenBucket
+from token_bucket import TokenBucket
 import torrent as state
 import tracker
 
@@ -64,14 +65,20 @@ class Engine(object):
         self._auto_shutdown = auto_shutdown
         self._state = torrent
         # interact with self
-        self._peers_without_connection = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._peers_without_connection: tuple[
+            trio.MemorySendChannel[peer_state.PeerAddress],
+            trio.MemoryReceiveChannel[peer_state.PeerAddress],
+        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
         self._complete_pieces_to_write = complete_pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
         self._blocks_for_peers = blocks_for_peers
         # interact with peer connections
-        self._msg_from_peer = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._msg_from_peer: tuple[
+            trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
+            trio.MemoryReceiveChannel[tuple[peer_state.PeerState, int, bytes]],
+        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: Dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
@@ -79,7 +86,7 @@ class Engine(object):
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
-            self.token_bucket: Union[NullBucket, TokenBucket] = NullBucket()
+            self.token_bucket: TokenBucket | None = None
         else:
             self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
 
@@ -101,7 +108,8 @@ class Engine(object):
             nursery.start_soon(
                 self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS
             )
-            nursery.start_soon(self.token_bucket.loop)
+            if self.token_bucket is not None:
+                nursery.start_soon(self.token_bucket.loop)
 
     async def control_loop(self):
         while True:
@@ -117,29 +125,29 @@ class Engine(object):
 
     async def info_loop(self):
         while True:
-            unwritten_blocks = len(self._received_blocks.items())
+            num_unwritten_blocks = len(self._received_blocks.items())
             outstanding_requests = self.requests.size
             logger.info("stats = {}".format(stats))
             logger.info(
                 "{} unwritten blocks, {} outstanding_requests, {}/{} complete pieces".format(
-                    unwritten_blocks,
+                    num_unwritten_blocks,
                     outstanding_requests,
                     sum(self._state._complete),
                     len(self._state._complete),
                 )
             )
-            if (
-                sum(self._state._complete) - len(self._state._complete) - sum(self._state._complete)
-                > 0.97
+            # TODO 2026-03-01: Fixes were made to this if statement and logging, but as the
+            # block is not triggered by the current integration tests it will need to be
+            # verified at some point in the future.
+            if (sum(self._state._complete) / len(self._state._complete) > 0.97) or (
+                len(self._state._complete) - sum(self._state._complete) < 2
             ):
                 logger.info("Outstanding requests = {}".format(self.requests._requests))
                 unwritten_blocks = [
-                    (i, b, len(data))
-                    for i, blocks in self._received_blocks.items()
-                    for b, data in blocks
+                    (i, b, len(data)) for i, (b, data) in self._received_blocks.items()
                 ]
                 logger.info("Unwritten blocks: {}".format(unwritten_blocks))
-            channels = [
+            channels: list[trio.MemorySendChannel[Any] | trio.MemoryReceiveChannel[Any]] = [
                 self._peers_without_connection[0],
                 self._complete_pieces_to_write,
                 self._write_confirmations,
@@ -160,6 +168,8 @@ class Engine(object):
             event = b"started" if new else None
             raw_tracker_info = await tracker.query(self._state, event)
             tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
+            if not isinstance(tracker_info, collections.OrderedDict):
+                raise Exception(f"Invalid tracker info: {tracker_info!r}")
             # update peers
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
@@ -191,12 +201,12 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: List[peer_state.PeerAddress]) -> None:
+    async def update_peers(self, peers: List[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
-                logger.info("Peer already exists: {}".format(peer_id))
+                logger.info("Peer already exists: {!r}".format(peer_id))
             else:
-                logger.info("Adding new peer to queue: {} / {}".format(address, peer_id))
+                logger.info("Adding new peer to queue: {!r} / {!r}".format(address, peer_id))
                 await self._peers_without_connection[0].send(address)
 
     def _blocks_from_index(self, index):
@@ -224,14 +234,14 @@ class Engine(object):
             target_index = _pick_random_one_in_bitarray(targets)
             if target_index is not None:
                 logger.info(
-                    "{}: self any? {}, peer any? {}, target_index = {}".format(
+                    "{!r}: self any? {}, peer any? {}, target_index = {}".format(
                         address, self._state._complete.any(), peer_state._pieces.any(), target_index
                     )
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
                     logger.info(
-                        "{}: Not making new requests: {} existing".format(
+                        "{!r}: Not making new requests: {} existing".format(
                             address, len(existing_requests)
                         )
                     )
@@ -240,76 +250,85 @@ class Engine(object):
                     suggested_requests = self._blocks_from_index(target_index)
                     new_requests = suggested_requests.difference(existing_requests)
                     logger.info(
-                        "{}: {} suggested requests, {} existing".format(
+                        "{!r}: {} suggested requests, {} existing".format(
                             address, len(suggested_requests), len(existing_requests)
                         )
                     )
-                logger.info("{}: new_requests = {}".format(address, new_requests))
+                logger.info("{!r}: new_requests = {}".format(address, new_requests))
                 if new_requests:
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         incStats("requests_out")
                     await peer_state.send_outgoing_data.send(("blocks_to_request", new_requests))
             else:
-                logger.info("No target pieces for {}".format(address))
+                logger.info("No target pieces for {!r}".format(address))
 
     async def handle_peer_message(self, peer_id, msg_type, msg_payload):
         if peer_id not in self._peers:
             logger.info("did not handle message because peer {} no longer exists".format(peer_id))
             return
         peer_state = self._peers[peer_id]
-        if msg_type == messages.PeerMsg.CHOKE:
-            logger.info("Received CHOKE from {}".format(peer_id))
-            peer_state.choke_us()
-        elif msg_type == messages.PeerMsg.UNCHOKE:
-            logger.info("Received UNCHOKE from {}".format(peer_id))
-            peer_state.unchoke_us()
-        elif msg_type == messages.PeerMsg.INTERESTED:
-            logger.warning("Received INTERESTED from {} (not implemented)".format(peer_id))  # TODO
-        elif msg_type == messages.PeerMsg.NOT_INTERESTED:
-            logger.warning(
-                "Received NOT_INTERESTED from {} (not implemented)".format(peer_id)
-            )  # TODO
-        elif msg_type == messages.PeerMsg.HAVE:
-            index: int = messages.parse_have(msg_payload)
-            logger.debug("Received HAVE {} from {}".format(index, peer_id))
-            peer_state.get_pieces()[index] = True
-        elif msg_type == messages.PeerMsg.BITFIELD:
-            logger.info("Received BITFIELD from {}".format(peer_id))
-            # TODO would be useful to log what percentage of the file the peer has
-            bitfield = messages.parse_bitfield(msg_payload)
-            peer_state.set_pieces(bitfield)
-        elif msg_type == messages.PeerMsg.REQUEST:
-            incStats("requests_in")
-            request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
-            logger.info("Received REQUEST from {} from {}".format(request_info, peer_state.peer_id))
-            index = request_info[0]
-            if peer_state.is_peer_choked:
+        match msg_type:
+            case messages.PeerMsg.CHOKE:
+                logger.info("Received CHOKE from {}".format(peer_id))
+                peer_state.choke_us()
+            case messages.PeerMsg.UNCHOKE:
+                logger.info("Received UNCHOKE from {}".format(peer_id))
+                peer_state.unchoke_us()
+            case messages.PeerMsg.INTERESTED:
                 logger.warning(
-                    "{} requested {} but peer is choked".format(peer_state.peer_id, index)
-                )
-            elif self._state._complete[index]:
-                await self._blocks_to_read.send((peer_state.peer_id, request_info))
-            else:
+                    "Received INTERESTED from {} (not implemented)".format(peer_id)
+                )  # TODO
+            case messages.PeerMsg.NOT_INTERESTED:
                 logger.warning(
-                    "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
+                    "Received NOT_INTERESTED from {} (not implemented)".format(peer_id)
+                )  # TODO
+            case messages.PeerMsg.HAVE:
+                index: int = messages.parse_have(msg_payload)
+                logger.debug("Received HAVE {} from {}".format(index, peer_id))
+                peer_state.get_pieces()[index] = True
+            case messages.PeerMsg.BITFIELD:
+                logger.info("Received BITFIELD from {}".format(peer_id))
+                # TODO would be useful to log what percentage of the file the peer has
+                bitfield = messages.parse_bitfield(msg_payload)
+                peer_state.set_pieces(bitfield)
+            case messages.PeerMsg.REQUEST:
+                incStats("requests_in")
+                request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
+                logger.info(
+                    "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )
-        elif msg_type == messages.PeerMsg.PIECE:
-            (index, begin, data) = messages.parse_piece(msg_payload)
-            incStats("blocks_in")
-            logger.info(
-                "Received block {} from {}".format((index, begin, len(data)), peer_state.peer_id)
-            )
-            peer_state.inc_download_counters()
-            await self.handle_block_received(index, begin, data)
-        elif msg_type == messages.PeerMsg.CANCEL:
-            logger.warning("Received CANCEL from {} (not implemented)".format(peer_id))  # TODO
-            request_info = messages.parse_request_or_cancel(msg_payload)
-        else:
-            # TODO - Exceptions are bad here! Should this be assert false?
-            logger.warning("Bad message: length = {}".format(length))
-            logger.warning("Bad message: data = {}".format(data))
-            raise Exception("bad peer message")
+                index = request_info[0]
+                if peer_state.is_peer_choked:
+                    logger.warning(
+                        "{} requested {} but peer is choked".format(peer_state.peer_id, index)
+                    )
+                elif self._state._complete[index]:
+                    await self._blocks_to_read.send((peer_state.peer_id, request_info))
+                else:
+                    logger.warning(
+                        "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
+                    )
+            case messages.PeerMsg.PIECE:
+                (index, begin, data) = messages.parse_piece(msg_payload)
+                incStats("blocks_in")
+                logger.info(
+                    "Received block {} from {}".format(
+                        (index, begin, len(data)), peer_state.peer_id
+                    )
+                )
+                peer_state.inc_download_counters()
+                await self.handle_block_received(index, begin, data)
+            case messages.PeerMsg.CANCEL:
+                logger.warning("Received CANCEL from {} (not implemented)".format(peer_id))  # TODO
+                request_info = messages.parse_request_or_cancel(msg_payload)
+            case _:
+                # TODO - Exceptions are bad here! Should this be assert false?
+                error_message = "Bad message: msg_type = {}, msg_payload = {}".format(
+                    msg_type, msg_payload
+                )
+                logger.error(error_message)
+                raise Exception(error_message)
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:

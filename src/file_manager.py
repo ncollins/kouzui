@@ -30,6 +30,9 @@ class FileWrapper(object):
             self._file_path = self._final_path
         else:
             self._file_path = self._tmp_path
+
+        assert self._file_path is not None
+
         try:
             self._file = open(self._file_path, "rb")
             hashes = []
@@ -58,6 +61,7 @@ class FileWrapper(object):
         return block
 
     def move_file_to_final_location(self):
+        assert self._file_path is not None
         if self._file_path != self._final_path:
             self._file.close()
             os.rename(self._file_path, self._final_path)

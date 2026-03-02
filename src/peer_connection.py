@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import logging
-from typing import Tuple, List
+from typing import Any, Optional, Tuple, List, TYPE_CHECKING
 
 import bitarray
 import trio
 
+if TYPE_CHECKING:
+    import engine
+    import token_bucket
 import messages
 import peer_state
 
@@ -21,13 +26,14 @@ class PeerStream(object):
     until it has enough.
     """
 
-    def __init__(self, stream, token_bucket=None):
+    def __init__(self, stream, token_bucket: token_bucket.TokenBucket | None = None):
         self._stream = stream
         self._msg_data = b""
         self._token_bucket = token_bucket
 
     async def receive_handshake(self):
         logger.debug("Starting to received handshake on {}".format(self._stream))
+        data = None
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data == b"":
@@ -83,9 +89,10 @@ class PeerStream(object):
         l = len(msg)
         data = l.to_bytes(4, byteorder="big") + msg
         logger.debug("Pre-send message of length {} on {}".format(l, self._stream))
-        while not self._token_bucket.check_and_decrement(len(data)):
-            logger.debug("Token bucket is empty waiting 0.1s")
-            await trio.sleep(self._token_bucket.update_period)
+        if self._token_bucket is not None:
+            while not self._token_bucket.check_and_decrement(len(data)):
+                logger.debug("Token bucket is empty waiting 0.1s")
+                await trio.sleep(self._token_bucket.update_period)
         await self._stream.send_all(data)
         logger.debug("Sent message of length {} on {}".format(l, self._stream))
 
@@ -115,23 +122,24 @@ class PeerEngine(object):
 
     def __init__(
         self,
-        engine,
+        main_engine: engine.Engine,
         peer_address,
         expected_peer_id,
         stream,
         *,
         send_peer_msg_to_engine: trio.MemorySendChannel,
     ):
-        self._tstate = engine._state
-        self._main_engine = engine
+        self._tstate = main_engine._state
+        self._main_engine: engine.Engine = main_engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
-        self._peer_id_and_state = None
-        self._peer_stream = PeerStream(stream, engine.token_bucket)
+        self._peer_id_and_state: Optional[Tuple[Any, peer_state.PeerState]] = None
+        self._peer_stream = PeerStream(stream, main_engine.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
-        self._receive_outgoing_data = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[Tuple[str, Any]]] = None
 
     async def run(self, initiate=True):
+        peer_id = None
         try:
             # Do handshakes before starting main loops
             if initiate == True:
@@ -154,7 +162,7 @@ class PeerEngine(object):
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            if self._peer_id_and_state:
+            if self._peer_id_and_state and peer_id is not None:
                 self._main_engine._peers.pop(peer_id)
             logger.exception("Exception raised in PeerEngine")
             logger.info(
@@ -162,7 +170,7 @@ class PeerEngine(object):
             )
             raise e
         except trio.MultiError:
-            if self._peer_id_and_state:
+            if self._peer_id_and_state and peer_id is not None:
                 self._main_engine._peers.pop(peer_id)
             logger.exception("MultiError raised in PeerEngine")
             logger.info(
@@ -197,6 +205,7 @@ class PeerEngine(object):
         logger.debug("Sent handshake to {}".format(self._peer_address))
 
     async def receiving_loop(self):
+        assert self._peer_id_and_state is not None
         peer_id = self._peer_id_and_state[0]
         while True:
             logging.debug("receiving_loop for {}".format(peer_id))
@@ -229,6 +238,8 @@ class PeerEngine(object):
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self):
+        assert self._peer_id_and_state is not None
+        assert self._receive_outgoing_data is not None
         logger.debug("About to send bitfield to {}".format(self._peer_id_and_state[0]))
         await self.send_bitfield()
         logger.debug("Sent bitfield to {}".format(self._peer_id_and_state[0]))
@@ -308,16 +319,19 @@ async def start_peer_engine(engine, peer_address, stream, initiate=True):
 
 def make_handler(engine):
     async def handler(stream):
+        peer_address = None
         try:
             peer_info = stream.socket.getpeername()
-            ip: string = peer_info[0]
+            ip: bytes = peer_info[0]
             port: int = peer_info[1]
             peer_address = peer_state.PeerAddress(ip, port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
             await start_peer_engine(engine, peer_address, stream, initiate=False)
         except Exception as e:  # TODO this might be too general
             logger.warning(
-                "Failed to maintain peer connection to {} because of {}".format(peer_address, e)
+                "Failed to maintain peer connection to {} because of {}".format(
+                    peer_address or "<unknown>", e
+                )
             )
 
     return handler

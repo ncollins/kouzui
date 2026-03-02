@@ -6,15 +6,16 @@ import trio
 logger = logging.getLogger("token_bucket")
 
 
-class NullBucket(object):
-    def __init__(self):
-        pass
-
-    def check_and_decrement(self, _packet_size):
-        return True
-
-    async def loop(self):
-        pass
+# class NullBucket(object):
+#    def __init__(self):
+#        pass
+#
+#    def check_and_decrement(self, _packet_size):
+#        return True
+#
+#    async def loop(self):
+#        pass
+#
 
 
 class TokenBucket(object):

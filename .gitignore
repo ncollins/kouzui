@@ -108,3 +108,6 @@ tmp/
 
 # test data
 integration_tests/test_data/
+
+# Ack
+.ackrc

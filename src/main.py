@@ -7,6 +7,7 @@ import random
 import shutil
 import os
 import time
+from typing import Any, cast
 
 import trio
 
@@ -20,10 +21,10 @@ logger = logging.getLogger("main")
 
 def read_torrent_file(torrent_path):
     with open(torrent_path, "rb") as f:
-        torrent_data: dict = bencode.parse_value(f)
+        torrent_data: dict[bytes, Any] = cast(dict[bytes, Any], bencode.parse_value(f))
         logger.debug("torrent_data = {}".format(torrent_data))
     torrent_info = bencode.encode_value(torrent_data[b"info"])
-    logger.debug("torrent info = {}".format(torrent_info))
+    logger.debug("torrent info = {!r}".format(torrent_info))
     # if True:
     #    with open(args.torrent_path, 'rb') as f:
     #        raw = f.read()
@@ -36,7 +37,9 @@ def run(log_level, torrent_path, listening_port, download_dir):
         log_level = getattr(logging, log_level.upper())
     else:
         log_level = getattr(logging, "WARNING")
-    logfile = "tmp/{}.log".format(listening_port)  # TODO - directory shouldn't be hardcoded
+    # TODO 2026-03-01: ideally the log location isn't tied to the download location
+    # but this is better for testing than writing to /tmp in a container
+    logfile = "{}/{}.log".format(download_dir, listening_port)
     logging.basicConfig(
         filename=logfile,
         level=log_level,

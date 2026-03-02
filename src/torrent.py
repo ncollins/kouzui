@@ -111,12 +111,14 @@ class Torrent(object):
         self._raw_tracker_url = tdict[b"announce"]
         r = re.compile(r"(?P<http>http://)?(?P<address>.+):(?P<port>\d+)(?P<path>.+)")
         m = r.fullmatch(self._raw_tracker_url.decode())
+        if m is None:
+            raise Exception(f"Unable to parse tracker URL: {self._raw_tracker_url.decode()}")
         g = m.groupdict()
         self._tracker_address = m["address"].encode()
         self._tracker_port = int(m["port"])
         self._tracker_path = m["path"].encode()
         logger.info(
-            "Tracker address: {}, port: {}, path: {}".format(
+            "Tracker address: {!r}, port: {}, path: {!r}".format(
                 self._tracker_address, self._tracker_port, self._tracker_path
             )
         )
