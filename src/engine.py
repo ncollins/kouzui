@@ -61,10 +61,10 @@ def _pick_random_one_in_bitarray(b: bitarray.bitarray) -> int | None:
 
 
 class StatField(StrEnum):
-    REQUESTS_IN  = "requests_in"
+    REQUESTS_IN = "requests_in"
     REQUESTS_OUT = "requests_out"
-    BLOCKS_IN    = "blocks_in"
-    BLOCKS_OUT   = "blocks_out"
+    BLOCKS_IN = "blocks_in"
+    BLOCKS_OUT = "blocks_out"
 
 
 class Engine(object):

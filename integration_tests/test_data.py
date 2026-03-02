@@ -36,9 +36,9 @@ import typer
 
 app = typer.Typer()
 
-FILE_SIZE    = 2 * 1024 * 1024  # 2 MB
-PIECE_LENGTH = 256 * 1024       # 256 KB  →  8 pieces total
-NUM_CLIENTS  = 3                # keep in sync with compose.yml / pod.yml
+FILE_SIZE = 2 * 1024 * 1024  # 2 MB
+PIECE_LENGTH = 256 * 1024  # 256 KB  →  8 pieces total
+NUM_CLIENTS = 3  # keep in sync with compose.yml / pod.yml
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,9 @@ def _sha256(path: pathlib.Path) -> bytes:
 @app.command()
 def create_incomplete_files(
     test_dir: pathlib.Path = typer.Argument(..., help="Directory to write test data into"),
-    torrent_name: str = typer.Argument(..., help="File name used inside the torrent (e.g. test_file.bin)"),
+    torrent_name: str = typer.Argument(
+        ..., help="File name used inside the torrent (e.g. test_file.bin)"
+    ),
     tracker_url: str = typer.Argument(..., help="Announce URL written into the .torrent file"),
 ):
     """Generate source file, .torrent, and per-client partial files."""
@@ -126,8 +128,12 @@ def create_incomplete_files(
 
 @app.command()
 def verify_complete_files(
-    test_dir: pathlib.Path = typer.Argument(..., help="Directory that was passed to create-incomplete-files"),
-    torrent_name: str = typer.Argument(..., help="File name used inside the torrent (e.g. test_file.bin)"),
+    test_dir: pathlib.Path = typer.Argument(
+        ..., help="Directory that was passed to create-incomplete-files"
+    ),
+    torrent_name: str = typer.Argument(
+        ..., help="File name used inside the torrent (e.g. test_file.bin)"
+    ),
 ):
     """Verify each client downloaded a complete, correct copy of the file."""
     reference = test_dir / torrent_name
