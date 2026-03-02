@@ -3,11 +3,11 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("file_manager")
-
 import trio
 
 import torrent as tstate
+
+logger = logging.getLogger("file_manager")
 
 
 def _create_empty_file(path, torrent):
