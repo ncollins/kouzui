@@ -26,7 +26,9 @@ class PeerStream(object):
     until it has enough.
     """
 
-    def __init__(self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None):
+    def __init__(
+        self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None
+    ):
         self._stream: trio.SocketStream = stream
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
@@ -122,19 +124,19 @@ class PeerEngine(object):
 
     def __init__(
         self,
-        main_engine: engine.Engine,
+        eng: engine.Engine,
         peer_address,
         expected_peer_id,
         stream: trio.SocketStream,
         *,
         send_peer_msg_to_engine: trio.MemorySendChannel,
     ):
-        self._tstate = main_engine._state
-        self._main_engine: engine.Engine = main_engine
+        self._tstate = eng._state
+        self._eng: engine.Engine = eng
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
         self._peer_id_and_state: Optional[tuple[Any, peer_state.PeerState]] = None
-        self._peer_stream = PeerStream(stream, main_engine.token_bucket)
+        self._peer_stream = PeerStream(stream, eng.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
         self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[tuple[str, Any]]] = None
 
@@ -148,14 +150,14 @@ class PeerEngine(object):
             else:
                 peer_id = await self.receive_handshake()
                 await self.send_handshake()
-            if peer_id in self._main_engine._peers:
+            if peer_id in self._eng._peers:
                 # We already have peer, close connection
                 raise Exception("peer already exists")
             else:
                 peer_s = peer_state.PeerState(
                     peer_id, self._tstate._num_pieces
                 )  # TODO don't use private property
-                self._main_engine._peers[peer_id] = peer_s
+                self._eng._peers[peer_id] = peer_s
                 self._peer_id_and_state = (peer_id, peer_s)
                 self._receive_outgoing_data = peer_s.receive_outgoing_data
             async with trio.open_nursery() as nursery:
@@ -163,7 +165,7 @@ class PeerEngine(object):
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
             if self._peer_id_and_state and peer_id is not None:
-                self._main_engine._peers.pop(peer_id)
+                self._eng._peers.pop(peer_id)
             logger.exception("Exception raised in PeerEngine")
             logger.info(
                 "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
@@ -171,7 +173,7 @@ class PeerEngine(object):
             raise e
         except trio.MultiError:
             if self._peer_id_and_state and peer_id is not None:
-                self._main_engine._peers.pop(peer_id)
+                self._eng._peers.pop(peer_id)
             logger.exception("MultiError raised in PeerEngine")
             logger.info(
                 "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
@@ -307,17 +309,19 @@ class PeerEngine(object):
                 )
 
 
-async def start_peer_engine(engine, peer_address, stream: trio.SocketStream, initiate=True):
+async def start_peer_engine(
+    eng: engine.Engine, peer_address, stream: trio.SocketStream, initiate=True
+):
     """
     Find (or create) queues for relevant stream, and create PeerEngine.
     """
     peer_engine = PeerEngine(
-        engine, peer_address, None, stream, send_peer_msg_to_engine=engine.peer_messages
+        eng, peer_address, None, stream, send_peer_msg_to_engine=eng.peer_messages
     )
     await peer_engine.run(initiate=True)
 
 
-def make_handler(engine: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[None]]:
+def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[None]]:
     async def handler(stream: trio.SocketStream) -> None:
         peer_address = None
         try:
@@ -326,7 +330,7 @@ def make_handler(engine: engine.Engine) -> Callable[[trio.SocketStream], Awaitab
             port: int = peer_info[1]
             peer_address = peer_state.PeerAddress(ip, port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
-            await start_peer_engine(engine, peer_address, stream, initiate=False)
+            await start_peer_engine(eng, peer_address, stream, initiate=False)
         except Exception as e:  # TODO this might be too general
             logger.warning(
                 "Failed to maintain peer connection to {} because of {}".format(
@@ -337,12 +341,12 @@ def make_handler(engine: engine.Engine) -> Callable[[trio.SocketStream], Awaitab
     return handler
 
 
-async def make_standalone(engine, peer_address):
+async def make_standalone(eng: engine.Engine, peer_address):
     logger.debug("Starting outgoing peer connection to {}".format(peer_address))
     stream: trio.SocketStream | None = None
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
-        await start_peer_engine(engine, peer_address, stream, initiate=True)
+        await start_peer_engine(eng, peer_address, stream, initiate=True)
     except Exception as e:  # TODO this might be too general
         logger.warning(
             "Failed to maintain peer connection to {} because of {}".format(peer_address, e)

@@ -496,7 +496,7 @@ def run(torrent):
             blocks_for_peers=s_blocks_for_peers,
         )
 
-        engine = Engine(
+        eng = Engine(
             torrent=torrent,
             complete_pieces_to_write=s_complete_pieces,
             write_confirmations=r_write_confirmations,
@@ -507,7 +507,7 @@ def run(torrent):
         async def run():
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(file_engine.run)
-                nursery.start_soon(engine.run)
+                nursery.start_soon(eng.run)
 
         trio.run(run)
     except KeyboardInterrupt:
