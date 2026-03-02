@@ -168,7 +168,7 @@ class Engine(object):
             raw_tracker_info = await tracker.query(self._state, event)
             tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
             if not isinstance(tracker_info, collections.OrderedDict):
-                raise Exception(f"Invalid tracker info: {tracker_info}")
+                raise Exception(f"Invalid tracker info: {tracker_info!r}")
             # update peers
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
