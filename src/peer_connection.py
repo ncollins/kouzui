@@ -33,6 +33,7 @@ class PeerStream(object):
 
     async def receive_handshake(self):
         logger.debug("Starting to received handshake on {}".format(self._stream))
+        data = None
         while len(self._msg_data) < 68:
             data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
             if data == b"":
