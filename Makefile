@@ -1,5 +1,10 @@
 .PHONY: typecheck lint integration-test unit-test check
 
+format:
+	uv run ruff format .
+
+format-check:
+	uv run ruff format --check .
 
 typecheck:
 	uv run mypy .
@@ -8,7 +13,7 @@ typecheck:
 lint:
 	uv run ruff check .
 
-check: typecheck lint unit-test
+check: format-check lint typecheck unit-test
 
 TEST_DATA_ABS    := $(abspath integration_tests/test_data)
 POD_MANIFEST_TMP := /tmp/kouzui-pod.yml
