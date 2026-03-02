@@ -9,8 +9,6 @@ import os
 import time
 from typing import Any, cast
 
-import trio
-
 import bencode
 import engine
 import file_manager

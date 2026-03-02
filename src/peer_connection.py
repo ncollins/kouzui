@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional, Tuple, List, TYPE_CHECKING
 
-import bitarray
 import trio
 
 if TYPE_CHECKING:

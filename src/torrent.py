@@ -1,14 +1,11 @@
-import datetime
 import hashlib
-import itertools
 import logging
 import os
 import random
 import re
-from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
+from typing import NamedTuple, List
 
 import bitarray
-import trio
 
 from config import DEFAULT_LISTENING_PORT
 

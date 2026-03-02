@@ -1,8 +1,6 @@
 import datetime
 import logging
-from typing import List, Dict, Tuple, Set
-
-import peer_state
+from typing import Tuple, Set
 
 logger = logging.getLogger("requests")
 

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import collections
-import io
 from typing import Any, BinaryIO, TYPE_CHECKING
 
 
