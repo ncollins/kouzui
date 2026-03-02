@@ -22,8 +22,27 @@ import tracker
 
 import config
 
+logger = logging.getLogger("engine")
 
-def _pick_random_one_in_bitarray(b):
+
+def _pick_random_one_in_bitarray(b: bitarray.bitarray) -> int | None:
+    """
+    For a bitarary, b, this picks a random index, i, such that
+    b[i] == 1.
+
+    It does this by picking a random starting index and searching forwards
+    until it finds an entry equal to 1. If that fails then it searches
+    backwards from the starting index.
+
+    Returns None if it can't find an element equal to 1.
+
+    >>> _pick_random_one_in_bitarray(bitarray.bitarray([1,0,0,0]))
+    0
+    >>> _pick_random_one_in_bitarray(bitarray.bitarray([0,0,0,1]))
+    3
+    >>> _pick_random_one_in_bitarray(bitarray.bitarray([0,0,0,0])) is None
+    True
+    """
     n = len(b)
     start = random.randint(0, n - 1)
     # look at tail
@@ -39,8 +58,6 @@ def _pick_random_one_in_bitarray(b):
     except ValueError:
         return None
 
-
-logger = logging.getLogger("engine")
 
 stats = {"requests_in": 0, "blocks_out": 0, "requests_out": 0, "blocks_in": 0}
 
