@@ -168,7 +168,7 @@ def parse_peers(data: bytes, torrent: torrent.Torrent) -> list[tuple[bytes, int,
     # a bencode issue
     try:
         peer_list = [(ip, port, None) for ip, port in parse_compact_peers(data)]
-    except:
+    except Exception:
         peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]  # type: ignore
     return [
         replace_with_localhost(tripple)
