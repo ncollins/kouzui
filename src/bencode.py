@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import collections
-import io
 from typing import Any, BinaryIO, TYPE_CHECKING
 
 
@@ -43,13 +42,13 @@ def parse_int(s: BinaryIO) -> int:
 
 
 def parse_list(s: BinaryIO) -> list[Any]:
-    l: list = []
+    xs: list = []
     while True:
         v = parse_value(s)
         if v is None:
-            return l
+            return xs
         else:
-            l.append(v)
+            xs.append(v)
 
 
 def parse_dict(s: BinaryIO) -> dict[bytes, Any]:
@@ -118,8 +117,8 @@ def encode_int(i: int) -> bytes:
     return b"i%de" % i
 
 
-def encode_list(l: list[Any]) -> bytes:
-    inner = b"".join(encode_value(v) for v in l)
+def encode_list(xs: list[Any]) -> bytes:
+    inner = b"".join(encode_value(x) for x in xs)
     return b"l%se" % inner
 
 
@@ -169,7 +168,7 @@ def parse_peers(data: bytes, torrent: torrent.Torrent) -> list[tuple[bytes, int,
     # a bencode issue
     try:
         peer_list = [(ip, port, None) for ip, port in parse_compact_peers(data)]
-    except:
+    except Exception:
         peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]  # type: ignore
     return [
         replace_with_localhost(tripple)

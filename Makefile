@@ -1,7 +1,14 @@
-.PHONY: typecheck integration-test unit-test
+.PHONY: typecheck lint integration-test unit-test check
+
 
 typecheck:
 	uv run mypy .
+	uv run ty check .
+
+lint:
+	uv run ruff check .
+
+check: typecheck lint unit-test
 
 TEST_DATA_ABS    := $(abspath integration_tests/test_data)
 POD_MANIFEST_TMP := /tmp/kouzui-pod.yml

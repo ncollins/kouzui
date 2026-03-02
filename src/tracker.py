@@ -1,11 +1,9 @@
-import io
 import logging
 from urllib import parse as urllib_parse  # hack to fix mypy warning
 
 import h11
 import trio
 
-import bencode
 import torrent
 import http_stream
 

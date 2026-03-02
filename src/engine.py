@@ -1,11 +1,10 @@
-import datetime
 import collections
 import hashlib
 import io
 import logging
 import math
 import random
-from typing import List, Dict, Tuple, Set, Union, Any
+from typing import Any
 
 import bitarray
 import trio
@@ -80,9 +79,9 @@ class Engine(object):
             trio.MemoryReceiveChannel[tuple[peer_state.PeerState, int, bytes]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
-        self._peers: Dict[bytes, peer_state.PeerState] = dict()
+        self._peers: dict[bytes, peer_state.PeerState] = dict()
         # data received but not written to disk
-        self._received_blocks: Dict[int, Tuple[bitarray.bitarray, bytearray]] = dict()
+        self._received_blocks: dict[int, tuple[bitarray.bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
 
         if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
@@ -201,7 +200,7 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: List[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
+    async def update_peers(self, peers: list[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
                 logger.info("Peer already exists: {!r}".format(peer_id))
@@ -226,16 +225,16 @@ class Engine(object):
         if not self._peers:
             logger.info("Not making new requests as there are no peers")
             return
-        for address, peer_state in self._peers.items():
-            if peer_state.is_client_choked:
+        for address, peer in self._peers.items():
+            if peer.is_client_choked:
                 continue
             # TODO don't read private field of another object
-            targets = (~self._state._complete) & peer_state._pieces
+            targets = (~self._state._complete) & peer._pieces
             target_index = _pick_random_one_in_bitarray(targets)
             if target_index is not None:
                 logger.info(
                     "{!r}: self any? {}, peer any? {}, target_index = {}".format(
-                        address, self._state._complete.any(), peer_state._pieces.any(), target_index
+                        address, self._state._complete.any(), peer._pieces.any(), target_index
                     )
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
@@ -259,7 +258,7 @@ class Engine(object):
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         incStats("requests_out")
-                    await peer_state.send_outgoing_data.send(("blocks_to_request", new_requests))
+                    await peer.send_outgoing_data.send(("blocks_to_request", new_requests))
             else:
                 logger.info("No target pieces for {!r}".format(address))
 
@@ -294,7 +293,7 @@ class Engine(object):
                 peer_state.set_pieces(bitfield)
             case messages.PeerMsg.REQUEST:
                 incStats("requests_in")
-                request_info: Tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
+                request_info: tuple[int, int, int] = messages.parse_request_or_cancel(msg_payload)
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )

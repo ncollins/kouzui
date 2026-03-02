@@ -1,14 +1,11 @@
-import datetime
 import hashlib
-import itertools
 import logging
 import os
 import random
 import re
-from typing import NamedTuple, Any, List, Dict, Tuple, Optional, Set
+from typing import NamedTuple
 
 import bitarray
-import trio
 
 from config import DEFAULT_LISTENING_PORT
 
@@ -54,16 +51,16 @@ def _generate_peer_id() -> bytes:
     return "".join(_random_char() for _ in range(0, 20)).encode()
 
 
-def _parse_pieces(bstring: bytes) -> List[bytes]:
+def _parse_pieces(bstring: bytes) -> list[bytes]:
     if (len(bstring) % 20) != 0:
         raise Exception("'pieces' is not a multiple of 20'")
     else:
-        l: List[bytes] = []
+        pieces: list[bytes] = []
         i = 0
         while i + 20 <= len(bstring):
-            l.append(bstring[i : i + 20])
+            pieces.append(bstring[i : i + 20])
             i += 20
-        return l
+        return pieces
 
 
 class Torrent(object):
@@ -113,7 +110,6 @@ class Torrent(object):
         m = r.fullmatch(self._raw_tracker_url.decode())
         if m is None:
             raise Exception(f"Unable to parse tracker URL: {self._raw_tracker_url.decode()}")
-        g = m.groupdict()
         self._tracker_address = m["address"].encode()
         self._tracker_port = int(m["port"])
         self._tracker_path = m["path"].encode()

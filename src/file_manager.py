@@ -3,11 +3,11 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("file_manager")
-
 import trio
 
 import torrent as tstate
+
+logger = logging.getLogger("file_manager")
 
 
 def _create_empty_file(path, torrent):
@@ -37,8 +37,8 @@ class FileWrapper(object):
             self._file = open(self._file_path, "rb")
             hashes = []
             for i, _ in enumerate(self._torrent._complete):
-                l = self._torrent.piece_length(i)
-                p = self.read_block(i, 0, l)
+                piece_length = self._torrent.piece_length(i)
+                p = self.read_block(i, 0, piece_length)
                 h = hashlib.sha1(p).digest()
                 hashes.append(h)
             self._file.close()

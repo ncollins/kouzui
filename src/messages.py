@@ -1,5 +1,4 @@
 from enum import IntEnum
-from typing import Tuple
 
 import bitarray
 
@@ -28,7 +27,7 @@ def parse_bitfield(s: bytes) -> bitarray.bitarray:
     return b
 
 
-def parse_request_or_cancel(s: bytes) -> Tuple[int, int, int]:
+def parse_request_or_cancel(s: bytes) -> tuple[int, int, int]:
     # This should be 12 bytes in most cases, so I'm hardcoding it for now.
     index = int.from_bytes(s[:4], byteorder="big")
     begin = int.from_bytes(s[4:8], byteorder="big")

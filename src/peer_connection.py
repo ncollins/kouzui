@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Tuple, List, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
-import bitarray
 import trio
 
 if TYPE_CHECKING:
@@ -52,8 +51,8 @@ class PeerStream(object):
         logger.debug("Final incoming handshake data {}".format(data))
         return handshake_data
 
-    def _parse_msg_data(self) -> List[Tuple[int, bytes]]:
-        messages: List[Tuple[int, bytes]] = []
+    def _parse_msg_data(self) -> list[tuple[int, bytes]]:
+        messages: list[tuple[int, bytes]] = []
         msg_length = None
         while True:
             total_length = len(self._msg_data)
@@ -70,7 +69,7 @@ class PeerStream(object):
                         "Parsed message of length {} from {}".format(msg_length, self._stream)
                     )
 
-    async def receive_message(self) -> List[Tuple[int, bytes]]:
+    async def receive_message(self) -> list[tuple[int, bytes]]:
         logger.debug("Called receive_message for {}".format(self._stream))
         while True:
             messages = self._parse_msg_data()
@@ -86,15 +85,15 @@ class PeerStream(object):
                 self._msg_data += data
 
     async def send_message(self, msg: bytes) -> None:
-        l = len(msg)
-        data = l.to_bytes(4, byteorder="big") + msg
-        logger.debug("Pre-send message of length {} on {}".format(l, self._stream))
+        message_length = len(msg)
+        data = message_length.to_bytes(4, byteorder="big") + msg
+        logger.debug("Pre-send message of length {} on {}".format(message_length, self._stream))
         if self._token_bucket is not None:
             while not self._token_bucket.check_and_decrement(len(data)):
                 logger.debug("Token bucket is empty waiting 0.1s")
                 await trio.sleep(self._token_bucket.update_period)
         await self._stream.send_all(data)
-        logger.debug("Sent message of length {} on {}".format(l, self._stream))
+        logger.debug("Sent message of length {} on {}".format(message_length, self._stream))
 
     async def send_handshake(self, info_hash, peer_id):
         handshake_data = b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
@@ -133,16 +132,16 @@ class PeerEngine(object):
         self._main_engine: engine.Engine = main_engine
         self._peer_address = peer_address
         self._expected_peer_id = expected_peer_id
-        self._peer_id_and_state: Optional[Tuple[Any, peer_state.PeerState]] = None
+        self._peer_id_and_state: Optional[tuple[Any, peer_state.PeerState]] = None
         self._peer_stream = PeerStream(stream, main_engine.token_bucket)
         self._send_peer_msg_to_engine = send_peer_msg_to_engine
-        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[Tuple[str, Any]]] = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[tuple[str, Any]]] = None
 
     async def run(self, initiate=True):
         peer_id = None
         try:
             # Do handshakes before starting main loops
-            if initiate == True:
+            if initiate:
                 await self.send_handshake()
                 peer_id = await self.receive_handshake()
             else:
