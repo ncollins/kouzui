@@ -26,8 +26,8 @@ class PeerStream(object):
     until it has enough.
     """
 
-    def __init__(self, stream, token_bucket: token_bucket.TokenBucket | None = None):
-        self._stream = stream
+    def __init__(self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None):
+        self._stream: trio.SocketStream = stream
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
 
@@ -42,14 +42,14 @@ class PeerStream(object):
                 )
                 raise Exception("EOF in handshake")
             logger.debug(
-                "Initial incoming handshake data from {}: {}".format(
+                "Initial incoming handshake data from {}: {!r}".format(
                     self._stream.socket.getpeername(), data
                 )
             )
             self._msg_data += data
         handshake_data = self._msg_data[:68]
         self._msg_data = self._msg_data[68:]
-        logger.debug("Final incoming handshake data {}".format(data))
+        logger.debug("Final incoming handshake data {!r}".format(data))
         return handshake_data
 
     def _parse_msg_data(self) -> list[tuple[int, bytes]]:
@@ -125,7 +125,7 @@ class PeerEngine(object):
         main_engine: engine.Engine,
         peer_address,
         expected_peer_id,
-        stream,
+        stream: trio.SocketStream,
         *,
         send_peer_msg_to_engine: trio.MemorySendChannel,
     ):
@@ -307,7 +307,7 @@ class PeerEngine(object):
                 )
 
 
-async def start_peer_engine(engine, peer_address, stream, initiate=True):
+async def start_peer_engine(engine, peer_address, stream: trio.SocketStream, initiate=True):
     """
     Find (or create) queues for relevant stream, and create PeerEngine.
     """
@@ -339,7 +339,7 @@ def make_handler(engine: engine.Engine) -> Callable[[trio.SocketStream], Awaitab
 
 async def make_standalone(engine, peer_address):
     logger.debug("Starting outgoing peer connection to {}".format(peer_address))
-    stream = None
+    stream: trio.SocketStream | None = None
     try:
         stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
         await start_peer_engine(engine, peer_address, stream, initiate=True)
