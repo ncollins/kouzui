@@ -27,7 +27,7 @@ class PeerStream(object):
 
     def __init__(self, stream, token_bucket: token_bucket.TokenBucket | None = None):
         self._stream = stream
-        self._msg_data = b""
+        self._msg_data: bytes = b""
         self._token_bucket = token_bucket
 
     async def receive_handshake(self):
