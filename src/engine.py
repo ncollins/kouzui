@@ -420,12 +420,11 @@ class Engine(object):
         while True:
             logger.debug("file_write_confirmation_loop")
             confirmation = await self._write_confirmations.receive()
-            index = confirmation.index
-            self.requests.delete_all_for_piece(index)
+            self.requests.delete_all_for_piece(confirmation.index)
             # NB - update the _complete vector first to guarantee that new clients get
             # the most upto date bitfield (they may also get a redundant HAVE message)
-            self._state._complete[index] = True  # TODO remove private property access
-            await self.announce_have_piece(index)
+            self._state._complete[confirmation.index] = True  # TODO remove private property access
+            await self.announce_have_piece(confirmation.index)
             await self.update_peer_requests()
 
     async def file_reading_loop(self) -> None:
