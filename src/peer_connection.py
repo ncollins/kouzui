@@ -21,7 +21,7 @@ logger = logging.getLogger("peer")
 class PeerStream(object):
     """
     The aim is to wrap a stream with a peer protocol
-    handler in the same way that Http_stream wraps
+    handler in the same way that HttpStream wraps
     a stream. The only "logic" needed for recieving messages
     is to find the length first and then keep accumulating data
     until it has enough.

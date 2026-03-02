@@ -9,7 +9,7 @@ import http_stream
 
 
 async def handler(stream):
-    h = http_stream.Http_stream(stream, h11.SERVER)
+    h = http_stream.HttpStream(stream, h11.SERVER)
 
     # valid events are:
     # - Request

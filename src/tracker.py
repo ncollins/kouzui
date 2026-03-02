@@ -58,8 +58,8 @@ async def query(torrent: torrent.Torrent, event) -> bytes:
         url.decode("ascii"), port
     )  # TODO fix hack with string/bytes issue
     logger.debug("Opened raw stream")
-    h = http_stream.Http_stream(stream, h11.CLIENT)
-    logger.debug("Created Http_stream")
+    h = http_stream.HttpStream(stream, h11.CLIENT)
+    logger.debug("Created HttpStream")
 
     await h.send_event(tracker_request(torrent, event))
     await h.send_event(h11.EndOfMessage())

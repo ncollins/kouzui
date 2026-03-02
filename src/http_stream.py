@@ -9,7 +9,7 @@ from config import STREAM_CHUNK_SIZE
 logger = logging.getLogger("httpstream")
 
 
-class Http_stream(object):
+class HttpStream:
     def __init__(self, stream: trio.abc.Stream, role: Type[h11.CLIENT | h11.SERVER]) -> None:
         self.stream: trio.abc.Stream = stream
         self.conn: h11.Connection = h11.Connection(our_role=role)
