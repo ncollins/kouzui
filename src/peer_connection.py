@@ -228,7 +228,7 @@ class PeerEngine(object):
                             self._peer_id,
                             RawPeerMessage(msg_type=msg_type, payload=msg_payload),
                         )
-                    )  # TODO should use peer_id
+                    )
 
     async def send_bitfield(self) -> None:
         raw_pieces = self._tstate._complete  # TODO don't use private property
