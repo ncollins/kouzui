@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import torrent
 import peer_messages
 import peer_state
-from peer_messages import Piece, Request, Choke, Have, PeerMessage, Unchoke
+from peer_messages import Choke, Have, Piece, PeerMessage, RawPeerMessage, Request, Unchoke
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -131,7 +131,9 @@ class PeerEngine(object):
         expected_peer_id: bytes | None,
         stream: trio.SocketStream,
         *,
-        send_peer_msg_to_engine: trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
+        send_peer_msg_to_engine: trio.MemorySendChannel[
+            tuple[peer_state.PeerState, RawPeerMessage]
+        ],
     ):
         self._tstate: torrent.Torrent = eng._state
         self._eng: engine.Engine = eng
@@ -140,7 +142,7 @@ class PeerEngine(object):
         self._peer_id_and_state: Optional[tuple[bytes, peer_state.PeerState]] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
         self._send_peer_msg_to_engine: trio.MemorySendChannel[
-            tuple[peer_state.PeerState, int, bytes]
+            tuple[peer_state.PeerState, RawPeerMessage]
         ] = send_peer_msg_to_engine
         self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
@@ -226,7 +228,10 @@ class PeerEngine(object):
                     msg_payload = data[1:]
                     logger.debug("Putting message in queue for engine")
                     await self._send_peer_msg_to_engine.send(
-                        (self._peer_id_and_state[1], msg_type, msg_payload)
+                        (
+                            self._peer_id_and_state[1],
+                            RawPeerMessage(msg_type=msg_type, payload=msg_payload),
+                        )
                     )  # TODO should use peer_id
 
     async def send_bitfield(self) -> None:

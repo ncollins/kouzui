@@ -28,7 +28,7 @@ from internal_messages import (
     CompletePieceToWrite,
     WriteConfirmation,
 )
-from peer_messages import Piece, Request, Choke, Have, Unchoke
+from peer_messages import Choke, Have, Piece, RawPeerMessage, Request, Unchoke
 from utility_types import Block
 
 logger = logging.getLogger("engine")
@@ -104,8 +104,8 @@ class Engine(object):
         self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
-            trio.MemoryReceiveChannel[tuple[peer_state.PeerState, int, bytes]],
+            trio.MemorySendChannel[tuple[peer_state.PeerState, RawPeerMessage]],
+            trio.MemoryReceiveChannel[tuple[peer_state.PeerState, RawPeerMessage]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[bytes, peer_state.PeerState] = dict()
@@ -124,7 +124,7 @@ class Engine(object):
         logger.debug("stats updated: {}".format(self._stats))
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]]:
+    def peer_messages(self) -> trio.MemorySendChannel[tuple[peer_state.PeerState, RawPeerMessage]]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -301,12 +301,12 @@ class Engine(object):
             else:
                 logger.info("No target pieces for {!r}".format(address))
 
-    async def handle_peer_message(self, peer_id: bytes, msg_type: int, msg_payload: bytes) -> None:
+    async def handle_peer_message(self, peer_id: bytes, raw_msg: RawPeerMessage) -> None:
         if peer_id not in self._peers:
             logger.info("did not handle message because peer {!r} no longer exists".format(peer_id))
             return
         peer_state = self._peers[peer_id]
-        match msg_type:
+        match raw_msg.msg_type:
             case peer_messages.MessageTypeByte.CHOKE:
                 logger.info("Received CHOKE from {!r}".format(peer_id))
                 peer_state.choke_us()
@@ -322,17 +322,17 @@ class Engine(object):
                     "Received NOT_INTERESTED from {!r} (not implemented)".format(peer_id)
                 )  # TODO
             case peer_messages.MessageTypeByte.HAVE:
-                index: int = peer_messages.parse_have(msg_payload)
+                index: int = peer_messages.parse_have(raw_msg.payload)
                 logger.debug("Received HAVE {} from {!r}".format(index, peer_id))
                 peer_state.get_pieces()[index] = True
             case peer_messages.MessageTypeByte.BITFIELD:
                 logger.info("Received BITFIELD from {!r}".format(peer_id))
                 # TODO would be useful to log what percentage of the file the peer has
-                bitfield = peer_messages.parse_bitfield(msg_payload)
+                bitfield = peer_messages.parse_bitfield(raw_msg.payload)
                 peer_state.set_pieces(bitfield)
             case peer_messages.MessageTypeByte.REQUEST:
                 self._inc_stats(StatField.REQUESTS_IN)
-                request_info = peer_messages.parse_request_or_cancel(msg_payload)
+                request_info = peer_messages.parse_request_or_cancel(raw_msg.payload)
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )
@@ -353,7 +353,7 @@ class Engine(object):
                         )
                     )
             case peer_messages.MessageTypeByte.PIECE:
-                (index, begin, data) = peer_messages.parse_piece(msg_payload)
+                (index, begin, data) = peer_messages.parse_piece(raw_msg.payload)
                 self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
                     "Received block {} from {}".format(
@@ -366,11 +366,11 @@ class Engine(object):
                 logger.warning(
                     "Received CANCEL from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-                request_info = peer_messages.parse_request_or_cancel(msg_payload)
+                request_info = peer_messages.parse_request_or_cancel(raw_msg.payload)
             case _:
                 # TODO - Exceptions are bad here! Should this be assert false?
                 error_message = "Bad message: msg_type = {}, msg_payload = {!r}".format(
-                    msg_type, msg_payload
+                    raw_msg.msg_type, raw_msg.payload
                 )
                 logger.error(error_message)
                 raise Exception(error_message)
@@ -404,13 +404,9 @@ class Engine(object):
     async def peer_messages_loop(self) -> None:
         while True:
             logger.debug("peer_messages_loop")
-            peer_state, msg_type, msg_payload = await self._msg_from_peer[
-                1
-            ].receive()  # TODO should use peer_id
+            peer_state, raw_msg = await self._msg_from_peer[1].receive()  # TODO should use peer_id
             logger.debug("Engine recieved peer message from {}".format(peer_state.peer_id))
-            await self.handle_peer_message(
-                peer_state.peer_id, msg_type, msg_payload
-            )  # TODO should use peer_id
+            await self.handle_peer_message(peer_state.peer_id, raw_msg)  # TODO should use peer_id
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:

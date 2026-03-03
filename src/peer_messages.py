@@ -19,6 +19,12 @@ class MessageTypeByte(IntEnum):
     CANCEL = 8
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
+class RawPeerMessage:
+    msg_type: int
+    payload: bytes
+
+
 def parse_have(s: bytes) -> int:
     return int.from_bytes(s[:4], byteorder="big")
 
