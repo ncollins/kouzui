@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import peer_messages
 import peer_state
 from internal_messages import BlockForPeer
+from utility_types import Block
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -255,20 +256,23 @@ class PeerEngine(object):
             with trio.move_on_after(KEEPALIVE_SECONDS):
                 command, data = await self._receive_outgoing_data.receive()
             if command == "blocks_to_request":
-                for index, begin, length in data:
+                for block in data:
+                    assert isinstance(block, Block)
                     raw_msg = bytes([peer_messages.PeerMsg.REQUEST])
-                    raw_msg += (index).to_bytes(4, byteorder="big")
-                    raw_msg += (begin).to_bytes(4, byteorder="big")
-                    raw_msg += (length).to_bytes(4, byteorder="big")
+                    raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
+                    raw_msg += (block.block_start).to_bytes(4, byteorder="big")
+                    raw_msg += (block.block_length).to_bytes(4, byteorder="big")
                     logger.debug(
                         "Pre-send REQUEST for {} from {!r}".format(
-                            (index, begin, length), self._peer_id_and_state[0]
+                            (block.piece_index, block.block_start, block.block_length),
+                            self._peer_id_and_state[0],
                         )
                     )
                     await self._peer_stream.send_message(raw_msg)
                     logger.debug(
                         "Sent REQUEST for {} from {!r}".format(
-                            (index, begin, length), self._peer_id_and_state[0]
+                            (block.piece_index, block.block_start, block.block_length),
+                            self._peer_id_and_state[0],
                         )
                     )
             elif command == "block_to_upload":

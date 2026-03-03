@@ -29,6 +29,7 @@ from internal_messages import (
     CompletePieceToWrite,
     WriteConfirmation,
 )
+from utility_types import Block
 
 logger = logging.getLogger("engine")
 
@@ -241,12 +242,17 @@ class Engine(object):
                 logger.info("Adding new peer to queue: {!r} / {!r}".format(address, peer_id))
                 await self._peers_without_connection[0].send(address)
 
-    def _blocks_from_index(self, index: int) -> set[tuple[int, int, int]]:
+    def _blocks_from_index(self, index: int) -> set[Block]:
         piece_length = self._state.piece_length(index)
         block_length = min(piece_length, config.BLOCK_SIZE)
         begin_indexes = list(range(0, piece_length, block_length))
         return set(
-            (index, begin, min(block_length, piece_length - begin)) for begin in begin_indexes
+            Block(
+                piece_index=index,
+                block_start=begin,
+                block_length=min(block_length, piece_length - begin),
+            )
+            for begin in begin_indexes
         )
 
     async def update_peer_requests(self) -> None:
@@ -277,7 +283,7 @@ class Engine(object):
                             address, len(existing_requests)
                         )
                     )
-                    new_requests = set()
+                    new_requests: set[Block] = set()
                 else:
                     suggested_requests = self._blocks_from_index(target_index)
                     new_requests = suggested_requests.difference(existing_requests)
