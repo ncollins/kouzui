@@ -205,12 +205,15 @@ class Engine(object):
                 raise Exception(f"Invalid tracker info: {tracker_info!r}")
             # update peers
             # TODO we could recieve peers in a different format
-            peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
-            peers = [
-                (PeerAddress(ip=ip, port=port), peer_id) for ip, port, peer_id in peer_ips_and_ports
-            ]
-            logger.info("Found peers from tracker: {}".format(peers))
-            await self.update_peers(peers)
+            logger.info(f"tracker_info = {tracker_info}")
+            try:
+                peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
+                peers = [(address, peer_id) for address, peer_id in peer_ips_and_ports]
+                logger.info("Found peers from tracker: {}".format(peers))
+                await self.update_peers(peers)
+            except ValueError as e:
+                logger.error(f"Error passing peers: {e}")
+
             # update other info:
             # self._state.complete_peers = tracker_info['complete']
             # self._state.incomplete_peers = tracker_info['incomplete']

@@ -322,8 +322,10 @@ def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[
     async def handler(stream: trio.SocketStream) -> None:
         peer_address = None
         try:
+            # NOTE: stream.socket.getpeername() could actually return anything, but for
+            # an IPv4 connection it returns an (ip, port) pair
             peer_info = stream.socket.getpeername()
-            ip: bytes = peer_info[0]
+            ip: bytes = peer_info[0].encode()
             port: int = peer_info[1]
             peer_address = PeerAddress(ip=ip, port=port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
