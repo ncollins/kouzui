@@ -254,57 +254,58 @@ class PeerEngine(object):
             msg: PeerMessage | None = None
             with trio.move_on_after(KEEPALIVE_SECONDS):
                 msg = await self._receive_outgoing_data.receive()
-            if msg is None:
-                logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-                await self._peer_stream.send_keepalive()
-                logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-            elif isinstance(msg, Request):
-                for block in msg.blocks:
-                    raw_msg = bytes([peer_messages.MessageTypeByte.REQUEST])
+            match msg:
+                case None:
+                    logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+                    await self._peer_stream.send_keepalive()
+                    logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+                case Request(blocks=blocks):
+                    for block in blocks:
+                        raw_msg = bytes([peer_messages.MessageTypeByte.REQUEST])
+                        raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
+                        raw_msg += (block.block_start).to_bytes(4, byteorder="big")
+                        raw_msg += (block.block_length).to_bytes(4, byteorder="big")
+                        logger.debug(
+                            "Pre-send REQUEST for {} from {!r}".format(
+                                (block.piece_index, block.block_start, block.block_length),
+                                self._peer_id_and_state[0],
+                            )
+                        )
+                        await self._peer_stream.send_message(raw_msg)
+                        logger.debug(
+                            "Sent REQUEST for {} from {!r}".format(
+                                (block.piece_index, block.block_start, block.block_length),
+                                self._peer_id_and_state[0],
+                            )
+                        )
+                case Piece(block=block, data=data):
+                    raw_msg = bytes([peer_messages.MessageTypeByte.PIECE])
                     raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_start).to_bytes(4, byteorder="big")
-                    raw_msg += (block.block_length).to_bytes(4, byteorder="big")
+                    raw_msg += data
                     logger.debug(
-                        "Pre-send REQUEST for {} from {!r}".format(
-                            (block.piece_index, block.block_start, block.block_length),
-                            self._peer_id_and_state[0],
-                        )
+                        "Pre-send PIECE {} to {!r}".format(block, self._peer_id_and_state[0])
+                    )
+                    await self._peer_stream.send_message(raw_msg)
+                    logger.debug("Sent PIECE {} to {!r}".format(block, self._peer_id_and_state[0]))
+                case Have(piece_index=piece_index):
+                    raw_msg = bytes([peer_messages.MessageTypeByte.HAVE])
+                    raw_msg += (piece_index).to_bytes(4, byteorder="big")
+                    logger.debug(
+                        "Pre-send HAVE {} to {!r}".format(piece_index, self._peer_id_and_state[0])
                     )
                     await self._peer_stream.send_message(raw_msg)
                     logger.debug(
-                        "Sent REQUEST for {} from {!r}".format(
-                            (block.piece_index, block.block_start, block.block_length),
-                            self._peer_id_and_state[0],
-                        )
+                        "Sent HAVE {} to {!r}".format(piece_index, self._peer_id_and_state[0])
                     )
-            elif isinstance(msg, Piece):
-                raw_msg = bytes([peer_messages.MessageTypeByte.PIECE])
-                raw_msg += (msg.block.piece_index).to_bytes(4, byteorder="big")
-                raw_msg += (msg.block.block_start).to_bytes(4, byteorder="big")
-                raw_msg += msg.data
-                logger.debug(
-                    "Pre-send PIECE {} to {!r}".format(msg.block, self._peer_id_and_state[0])
-                )
-                await self._peer_stream.send_message(raw_msg)
-                logger.debug("Sent PIECE {} to {!r}".format(msg.block, self._peer_id_and_state[0]))
-            elif isinstance(msg, Have):
-                raw_msg = bytes([peer_messages.MessageTypeByte.HAVE])
-                raw_msg += (msg.piece_index).to_bytes(4, byteorder="big")
-                logger.debug(
-                    "Pre-send HAVE {} to {!r}".format(msg.piece_index, self._peer_id_and_state[0])
-                )
-                await self._peer_stream.send_message(raw_msg)
-                logger.debug(
-                    "Sent HAVE {} to {!r}".format(msg.piece_index, self._peer_id_and_state[0])
-                )
-            elif isinstance(msg, Choke):
-                logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id_and_state[0]))
-                await self.send_choke()
-                logger.debug("Sent CHOKE to {!r}".format(self._peer_id_and_state[0]))
-            elif isinstance(msg, Unchoke):
-                logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
-                await self.send_unchoke()
-                logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
+                case Choke():
+                    logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    await self.send_choke()
+                    logger.debug("Sent CHOKE to {!r}".format(self._peer_id_and_state[0]))
+                case Unchoke():
+                    logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    await self.send_unchoke()
+                    logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
 
 
 async def start_peer_engine(
