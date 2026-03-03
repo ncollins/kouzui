@@ -138,7 +138,7 @@ class PeerEngine(object):
         self._eng: engine.Engine = eng
         self._peer_address: peer_state.PeerAddress = peer_address
         self._expected_peer_id: PeerId | None = expected_peer_id
-        self._peer_id_and_state: Optional[tuple[PeerId, peer_state.PeerState]] = None
+        self._peer_id: Optional[PeerId] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
         self._send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]] = (
             send_peer_msg_to_engine
@@ -163,26 +163,22 @@ class PeerEngine(object):
                     peer_id, self._tstate._num_pieces
                 )  # TODO don't use private property
                 self._eng._peers[peer_id] = peer_s
-                self._peer_id_and_state = (peer_id, peer_s)
+                self._peer_id = peer_id
                 self._receive_outgoing_data = peer_s.receive_outgoing_data
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            if self._peer_id_and_state and peer_id is not None:
+            if peer_id is not None:
                 self._eng._peers.pop(peer_id)
             logger.exception("Exception raised in PeerEngine")
-            logger.info(
-                "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
-            )
+            logger.info("Closing PeerEngine {} / {!r}".format(self._peer_address, peer_id))
             raise e
         except trio.MultiError:
-            if self._peer_id_and_state and peer_id is not None:
+            if peer_id is not None:
                 self._eng._peers.pop(peer_id)
             logger.exception("MultiError raised in PeerEngine")
-            logger.info(
-                "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
-            )
+            logger.info("Closing PeerEngine {} / {!r}".format(self._peer_address, peer_id))
             raise Exception("trio.MultiError was raised by PeerEngine")
 
     async def receive_handshake(self) -> PeerId:
@@ -212,13 +208,14 @@ class PeerEngine(object):
         logger.debug("Sent handshake to {}".format(self._peer_address))
 
     async def receiving_loop(self) -> None:
-        assert self._peer_id_and_state is not None
-        peer_id = self._peer_id_and_state[0]
+        assert self._peer_id is not None
         while True:
-            logging.debug("receiving_loop for {!r}".format(peer_id))
+            logging.debug("receiving_loop for {!r}".format(self._peer_id))
             messages = await self._peer_stream.receive_message()
             for length, data in messages:
-                logger.debug("Received message of length {} from {!r}".format(length, peer_id))
+                logger.debug(
+                    "Received message of length {} from {!r}".format(length, self._peer_id)
+                )
                 if length == 0:
                     # keepalive message
                     pass
@@ -228,7 +225,7 @@ class PeerEngine(object):
                     logger.debug("Putting message in queue for engine")
                     await self._send_peer_msg_to_engine.send(
                         (
-                            self._peer_id_and_state[0],
+                            self._peer_id,
                             RawPeerMessage(msg_type=msg_type, payload=msg_payload),
                         )
                     )  # TODO should use peer_id
@@ -248,11 +245,11 @@ class PeerEngine(object):
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self) -> None:
-        assert self._peer_id_and_state is not None
+        assert self._peer_id is not None
         assert self._receive_outgoing_data is not None
-        logger.debug("About to send bitfield to {!r}".format(self._peer_id_and_state[0]))
+        logger.debug("About to send bitfield to {!r}".format(self._peer_id))
         await self.send_bitfield()
-        logger.debug("Sent bitfield to {!r}".format(self._peer_id_and_state[0]))
+        logger.debug("Sent bitfield to {!r}".format(self._peer_id))
         while True:
             logging.debug("sending_loop")
             msg: PeerMessage | None = None
@@ -260,9 +257,9 @@ class PeerEngine(object):
                 msg = await self._receive_outgoing_data.receive()
             match msg:
                 case None:
-                    logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id))
                     await self._peer_stream.send_keepalive()
-                    logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id))
                 case Request(blocks=blocks):
                     for block in blocks:
                         raw_msg = bytes([peer_messages.MessageTypeByte.REQUEST])
@@ -272,14 +269,14 @@ class PeerEngine(object):
                         logger.debug(
                             "Pre-send REQUEST for {} from {!r}".format(
                                 (block.piece_index, block.block_start, block.block_length),
-                                self._peer_id_and_state[0],
+                                self._peer_id,
                             )
                         )
                         await self._peer_stream.send_message(raw_msg)
                         logger.debug(
                             "Sent REQUEST for {} from {!r}".format(
                                 (block.piece_index, block.block_start, block.block_length),
-                                self._peer_id_and_state[0],
+                                self._peer_id,
                             )
                         )
                 case Piece(block=block, data=data):
@@ -287,29 +284,23 @@ class PeerEngine(object):
                     raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_start).to_bytes(4, byteorder="big")
                     raw_msg += data
-                    logger.debug(
-                        "Pre-send PIECE {} to {!r}".format(block, self._peer_id_and_state[0])
-                    )
+                    logger.debug("Pre-send PIECE {} to {!r}".format(block, self._peer_id))
                     await self._peer_stream.send_message(raw_msg)
-                    logger.debug("Sent PIECE {} to {!r}".format(block, self._peer_id_and_state[0]))
+                    logger.debug("Sent PIECE {} to {!r}".format(block, self._peer_id))
                 case Have(piece_index=piece_index):
                     raw_msg = bytes([peer_messages.MessageTypeByte.HAVE])
                     raw_msg += (piece_index).to_bytes(4, byteorder="big")
-                    logger.debug(
-                        "Pre-send HAVE {} to {!r}".format(piece_index, self._peer_id_and_state[0])
-                    )
+                    logger.debug("Pre-send HAVE {} to {!r}".format(piece_index, self._peer_id))
                     await self._peer_stream.send_message(raw_msg)
-                    logger.debug(
-                        "Sent HAVE {} to {!r}".format(piece_index, self._peer_id_and_state[0])
-                    )
+                    logger.debug("Sent HAVE {} to {!r}".format(piece_index, self._peer_id))
                 case Choke():
-                    logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id))
                     await self.send_choke()
-                    logger.debug("Sent CHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Sent CHOKE to {!r}".format(self._peer_id))
                 case Unchoke():
-                    logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id))
                     await self.send_unchoke()
-                    logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
+                    logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id))
 
 
 async def start_peer_engine(
