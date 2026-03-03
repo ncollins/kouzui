@@ -332,31 +332,25 @@ class Engine(object):
                 peer_state.set_pieces(bitfield)
             case peer_messages.PeerMsg.REQUEST:
                 self._inc_stats(StatField.REQUESTS_IN)
-                request_info: tuple[int, int, int] = peer_messages.parse_request_or_cancel(
-                    msg_payload
-                )
+                request_info = peer_messages.parse_request_or_cancel(msg_payload)
                 logger.info(
                     "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
                 )
-                index = request_info[0]
                 if peer_state.is_peer_choked:
                     logger.warning(
-                        "{} requested {} but peer is choked".format(peer_state.peer_id, index)
-                    )
-                elif self._state._complete[index]:
-                    await self._blocks_to_read.send(
-                        BlockToRead(
-                            peer_id=peer_state.peer_id,
-                            block=Block(
-                                piece_index=request_info[0],
-                                block_start=request_info[1],
-                                block_length=request_info[2],
-                            ),
+                        "{} requested {} but peer is choked".format(
+                            peer_state.peer_id, request_info.piece_index
                         )
+                    )
+                elif self._state._complete[request_info.piece_index]:
+                    await self._blocks_to_read.send(
+                        BlockToRead(peer_id=peer_state.peer_id, block=request_info)
                     )
                 else:
                     logger.warning(
-                        "{} requested {} but piece is incomplete".format(peer_state.peer_id, index)
+                        "{} requested {} but piece is incomplete".format(
+                            peer_state.peer_id, request_info.piece_index
+                        )
                     )
             case peer_messages.PeerMsg.PIECE:
                 (index, begin, data) = peer_messages.parse_piece(msg_payload)
