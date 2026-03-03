@@ -24,11 +24,11 @@ import tracker
 import config
 from internal_messages import (
     AllPiecesWritten,
-    BlockForPeer,
     BlockToRead,
     CompletePieceToWrite,
     WriteConfirmation,
 )
+from peer_messages import Piece, Request, Choke, Have, Unchoke
 from utility_types import Block
 
 logger = logging.getLogger("engine")
@@ -83,7 +83,7 @@ class Engine(object):
         complete_pieces_to_write: trio.MemorySendChannel[CompletePieceToWrite | AllPiecesWritten],
         write_confirmations: trio.MemoryReceiveChannel[WriteConfirmation],
         blocks_to_read: trio.MemorySendChannel[BlockToRead],
-        blocks_for_peers: trio.MemoryReceiveChannel[BlockForPeer],
+        blocks_for_peers: trio.MemoryReceiveChannel[Piece],
         auto_shutdown: bool = False,
     ) -> None:
         self._auto_shutdown: bool = auto_shutdown
@@ -101,7 +101,7 @@ class Engine(object):
             write_confirmations
         )
         self._blocks_to_read: trio.MemorySendChannel[BlockToRead] = blocks_to_read
-        self._blocks_for_peers: trio.MemoryReceiveChannel[BlockForPeer] = blocks_for_peers
+        self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
             trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
@@ -297,7 +297,7 @@ class Engine(object):
                     for r in new_requests:
                         self.requests.add_request(address, r)
                         self._inc_stats(StatField.REQUESTS_OUT)
-                    await peer.send_outgoing_data.send(("blocks_to_request", new_requests))
+                    await peer.send_outgoing_data.send(Request(blocks=new_requests))
             else:
                 logger.info("No target pieces for {!r}".format(address))
 
@@ -418,7 +418,7 @@ class Engine(object):
             self._peers.copy()
         )  # shallow copy, but that should be enough as we're not modifying the PeerState objects
         for _peer_id, peer_s in peers.items():
-            await peer_s.send_outgoing_data.send(("announce_have_piece", index))
+            await peer_s.send_outgoing_data.send(Have(piece_index=index))
 
     async def file_write_confirmation_loop(self) -> None:
         while True:
@@ -439,7 +439,7 @@ class Engine(object):
             if msg.peer_id in self._peers:
                 p_state = self._peers[msg.peer_id]
                 p_state.inc_upload_counters()
-                await p_state.send_outgoing_data.send(("block_to_upload", msg))
+                await p_state.send_outgoing_data.send(msg)
             else:
                 logger.info(
                     "dropped block {} for {!r} because peer no longer exists".format(
@@ -475,14 +475,14 @@ class Engine(object):
                     alert = p_state.unchoke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.send_outgoing_data.send(("unchoke", None))
+                        await p_state.send_outgoing_data.send(Unchoke())
             for p_id in choke:
                 if p_id in self._peers:  # protect against state change while putting in queue
                     p_state = self._peers[p_id]
                     alert = p_state.choke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.send_outgoing_data.send(("choke", None))
+                        await p_state.send_outgoing_data.send(Choke())
             # update period
             period = (period + 1) % 3  # rotate period every 30 seconds
 
@@ -514,7 +514,7 @@ def run(torrent):
         s_blocks_to_read, r_blocks_to_read = trio.open_memory_channel[BlockToRead](
             config.INTERNAL_QUEUE_SIZE
         )
-        s_blocks_for_peers, r_blocks_for_peers = trio.open_memory_channel[BlockForPeer](
+        s_blocks_for_peers, r_blocks_for_peers = trio.open_memory_channel[Piece](
             config.INTERNAL_QUEUE_SIZE
         )
 

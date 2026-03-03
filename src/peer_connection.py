@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 import trio
 
@@ -12,8 +12,7 @@ if TYPE_CHECKING:
     import torrent
 import peer_messages
 import peer_state
-from internal_messages import BlockForPeer
-from utility_types import Block
+from peer_messages import Piece, Request, Choke, Have, PeerMessage, Unchoke
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -143,7 +142,7 @@ class PeerEngine(object):
         self._send_peer_msg_to_engine: trio.MemorySendChannel[
             tuple[peer_state.PeerState, int, bytes]
         ] = send_peer_msg_to_engine
-        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[tuple[str, Any]]] = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
     async def run(self, initiate: bool = True) -> None:
         peer_id = None
@@ -252,12 +251,15 @@ class PeerEngine(object):
         logger.debug("Sent bitfield to {!r}".format(self._peer_id_and_state[0]))
         while True:
             logging.debug("sending_loop")
-            command, data = "keepalive", None
+            msg: PeerMessage | None = None
             with trio.move_on_after(KEEPALIVE_SECONDS):
-                command, data = await self._receive_outgoing_data.receive()
-            if command == "blocks_to_request":
-                for block in data:
-                    assert isinstance(block, Block)
+                msg = await self._receive_outgoing_data.receive()
+            if msg is None:
+                logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+                await self._peer_stream.send_keepalive()
+                logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
+            elif isinstance(msg, Request):
+                for block in msg.blocks:
                     raw_msg = bytes([peer_messages.PeerMsg.REQUEST])
                     raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_start).to_bytes(4, byteorder="big")
@@ -275,42 +277,34 @@ class PeerEngine(object):
                             self._peer_id_and_state[0],
                         )
                     )
-            elif command == "block_to_upload":
-                assert isinstance(data, BlockForPeer)
+            elif isinstance(msg, Piece):
                 raw_msg = bytes([peer_messages.PeerMsg.PIECE])
-                raw_msg += (data.block.piece_index).to_bytes(4, byteorder="big")
-                raw_msg += (data.block.block_start).to_bytes(4, byteorder="big")
-                raw_msg += data.data
+                raw_msg += (msg.block.piece_index).to_bytes(4, byteorder="big")
+                raw_msg += (msg.block.block_start).to_bytes(4, byteorder="big")
+                raw_msg += msg.data
                 logger.debug(
-                    "Pre-send PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0])
+                    "Pre-send PIECE {} to {!r}".format(msg.block, self._peer_id_and_state[0])
                 )
                 await self._peer_stream.send_message(raw_msg)
-                logger.debug("Sent PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0]))
-            elif command == "announce_have_piece":
+                logger.debug("Sent PIECE {} to {!r}".format(msg.block, self._peer_id_and_state[0]))
+            elif isinstance(msg, Have):
                 raw_msg = bytes([peer_messages.PeerMsg.HAVE])
-                raw_msg += (data).to_bytes(4, byteorder="big")
-                logger.debug("Pre-send HAVE {} to {!r}".format(data, self._peer_id_and_state[0]))
+                raw_msg += (msg.piece_index).to_bytes(4, byteorder="big")
+                logger.debug(
+                    "Pre-send HAVE {} to {!r}".format(msg.piece_index, self._peer_id_and_state[0])
+                )
                 await self._peer_stream.send_message(raw_msg)
-                logger.debug("Sent HAVE {} to {!r}".format(data, self._peer_id_and_state[0]))
-            elif command == "choke":
+                logger.debug(
+                    "Sent HAVE {} to {!r}".format(msg.piece_index, self._peer_id_and_state[0])
+                )
+            elif isinstance(msg, Choke):
                 logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id_and_state[0]))
                 await self.send_choke()
                 logger.debug("Sent CHOKE to {!r}".format(self._peer_id_and_state[0]))
-            elif command == "unchoke":
+            elif isinstance(msg, Unchoke):
                 logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
                 await self.send_unchoke()
                 logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
-            elif command == "keepalive":
-                logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-                await self._peer_stream.send_keepalive()
-                logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-
-            else:
-                logger.warning(
-                    "PeerEngine for {!r} received unsupported message from Engine: {}".format(
-                        self._peer_id_and_state[0], (command, data)
-                    )
-                )
 
 
 async def start_peer_engine(

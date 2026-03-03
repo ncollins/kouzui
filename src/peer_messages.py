@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from enum import IntEnum
+from typing import TypeAlias
 
 import bitarray
 
@@ -43,3 +45,33 @@ def parse_piece(s):
     begin = int.from_bytes(s[4:8], byteorder="big")
     data = s[8:]
     return (index, begin, data)
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Request:
+    blocks: set[Block]
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Have:
+    piece_index: int
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Piece:
+    peer_id: bytes
+    block: Block
+    data: bytes
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Choke:
+    pass
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Unchoke:
+    pass
+
+
+PeerMessage: TypeAlias = Request | Have | Piece | Choke | Unchoke

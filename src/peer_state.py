@@ -1,11 +1,12 @@
 import datetime
 from enum import Enum
-from typing import NamedTuple, Any
+from typing import NamedTuple
 
 import bitarray
 import trio
 
 import config
+from peer_messages import PeerMessage
 
 PeerAddress = NamedTuple("PeerAddress", [("ip", bytes), ("port", int)])
 
@@ -28,7 +29,8 @@ class PeerState(object):
         self._pieces = pieces
         self._peer_id = peer_id
         self._outgoing_data_channel: tuple[
-            trio.MemorySendChannel[tuple[str, Any]], trio.MemoryReceiveChannel[tuple[str, Any]]
+            trio.MemorySendChannel[PeerMessage],
+            trio.MemoryReceiveChannel[PeerMessage],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         self._choked_us = True
         self._choked_them = True
@@ -90,11 +92,15 @@ class PeerState(object):
         return self._peer_id
 
     @property
-    def receive_outgoing_data(self) -> trio.MemoryReceiveChannel[tuple[str, Any]]:
+    def receive_outgoing_data(
+        self,
+    ) -> trio.MemoryReceiveChannel[PeerMessage]:
         return self._outgoing_data_channel[1]
 
     @property
-    def send_outgoing_data(self) -> trio.MemorySendChannel[tuple[str, Any]]:
+    def send_outgoing_data(
+        self,
+    ) -> trio.MemorySendChannel[PeerMessage]:
         return self._outgoing_data_channel[0]
 
     def inc_download_counters(self) -> None:

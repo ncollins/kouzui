@@ -8,11 +8,11 @@ import trio
 import torrent as tstate
 from internal_messages import (
     AllPiecesWritten,
-    BlockForPeer,
     BlockToRead,
     CompletePieceToWrite,
     WriteConfirmation,
 )
+from peer_messages import Piece
 
 logger = logging.getLogger("file_manager")
 
@@ -85,7 +85,7 @@ class FileManager(object):
         pieces_to_write: trio.MemoryReceiveChannel[CompletePieceToWrite | AllPiecesWritten],
         write_confirmations: trio.MemorySendChannel[WriteConfirmation],
         blocks_to_read: trio.MemoryReceiveChannel[BlockToRead],
-        blocks_for_peers: trio.MemorySendChannel[BlockForPeer],
+        blocks_for_peers: trio.MemorySendChannel[Piece],
     ) -> None:
         self._file_wrapper = file_wrapper
         self._pieces_to_write = pieces_to_write
@@ -118,5 +118,5 @@ class FileManager(object):
                 msg.block.piece_index, msg.block.block_start, msg.block.block_length
             )
             await self._blocks_for_peers.send(
-                BlockForPeer(peer_id=msg.peer_id, block=msg.block, data=data)
+                Piece(peer_id=msg.peer_id, block=msg.block, data=data)
             )
