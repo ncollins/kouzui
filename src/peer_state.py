@@ -7,6 +7,7 @@ import trio
 
 import config
 from peer_messages import PeerMessage
+from utility_types import PeerId
 
 PeerAddress = NamedTuple("PeerAddress", [("ip", bytes), ("port", int)])
 
@@ -22,7 +23,7 @@ class ChokeAlert(Enum):
 
 
 class PeerState(object):
-    def __init__(self, peer_id: bytes, num_pieces: int) -> None:
+    def __init__(self, peer_id: PeerId, num_pieces: int) -> None:
         now = datetime.datetime.now()
         pieces = bitarray.bitarray(num_pieces)
         pieces.setall(False)
@@ -88,7 +89,7 @@ class PeerState(object):
         return self._last_seen
 
     @property
-    def peer_id(self):
+    def peer_id(self) -> PeerId:
         return self._peer_id
 
     @property

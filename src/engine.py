@@ -29,7 +29,7 @@ from internal_messages import (
     WriteConfirmation,
 )
 from peer_messages import Choke, Have, Piece, RawPeerMessage, Request, Unchoke
-from utility_types import Block
+from utility_types import Block, PeerId
 
 logger = logging.getLogger("engine")
 
@@ -108,7 +108,7 @@ class Engine(object):
             trio.MemoryReceiveChannel[tuple[peer_state.PeerState, RawPeerMessage]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
-        self._peers: dict[bytes, peer_state.PeerState] = dict()
+        self._peers: dict[PeerId, peer_state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: dict[int, tuple[bitarray.bitarray, bytearray]] = dict()
         self.requests = requests.RequestManager()
@@ -234,7 +234,7 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: list[tuple[peer_state.PeerAddress, bytes | None]]) -> None:
+    async def update_peers(self, peers: list[tuple[peer_state.PeerAddress, PeerId | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
                 logger.info("Peer already exists: {!r}".format(peer_id))
@@ -301,7 +301,7 @@ class Engine(object):
             else:
                 logger.info("No target pieces for {!r}".format(address))
 
-    async def handle_peer_message(self, peer_id: bytes, raw_msg: RawPeerMessage) -> None:
+    async def handle_peer_message(self, peer_id: PeerId, raw_msg: RawPeerMessage) -> None:
         if peer_id not in self._peers:
             logger.info("did not handle message because peer {!r} no longer exists".format(peer_id))
             return
@@ -334,11 +334,11 @@ class Engine(object):
                 self._inc_stats(StatField.REQUESTS_IN)
                 request_info = peer_messages.parse_request_or_cancel(raw_msg.payload)
                 logger.info(
-                    "Received REQUEST from {} from {}".format(request_info, peer_state.peer_id)
+                    "Received REQUEST from {} from {!r}".format(request_info, peer_state.peer_id)
                 )
                 if peer_state.is_peer_choked:
                     logger.warning(
-                        "{} requested {} but peer is choked".format(
+                        "{!r} requested {} but peer is choked".format(
                             peer_state.peer_id, request_info.piece_index
                         )
                     )
@@ -348,7 +348,7 @@ class Engine(object):
                     )
                 else:
                     logger.warning(
-                        "{} requested {} but piece is incomplete".format(
+                        "{!r} requested {} but piece is incomplete".format(
                             peer_state.peer_id, request_info.piece_index
                         )
                     )
@@ -356,7 +356,7 @@ class Engine(object):
                 (index, begin, data) = peer_messages.parse_piece(raw_msg.payload)
                 self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
-                    "Received block {} from {}".format(
+                    "Received block {} from {!r}".format(
                         (index, begin, len(data)), peer_state.peer_id
                     )
                 )
@@ -405,7 +405,7 @@ class Engine(object):
         while True:
             logger.debug("peer_messages_loop")
             peer_state, raw_msg = await self._msg_from_peer[1].receive()  # TODO should use peer_id
-            logger.debug("Engine recieved peer message from {}".format(peer_state.peer_id))
+            logger.debug("Engine recieved peer message from {!r}".format(peer_state.peer_id))
             await self.handle_peer_message(peer_state.peer_id, raw_msg)  # TODO should use peer_id
             await self.update_peer_requests()
 

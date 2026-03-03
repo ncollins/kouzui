@@ -2,7 +2,7 @@ import datetime
 import logging
 from typing import Set
 
-from utility_types import Block
+from utility_types import Block, PeerId
 
 logger = logging.getLogger("requests")
 
@@ -14,13 +14,13 @@ class RequestManager(object):
     """
 
     def __init__(self):
-        self._requests: Set[tuple[bytes, Block, datetime.datetime]] = set()
+        self._requests: Set[tuple[PeerId, Block, datetime.datetime]] = set()
 
     @property
     def size(self):
         return len(self._requests)
 
-    def add_request(self, peer_id: bytes, block: Block):
+    def add_request(self, peer_id: PeerId, block: Block):
         self._requests.add((peer_id, block, datetime.datetime.now()))
 
     def delete_all_for_piece(self, index: int):
@@ -32,7 +32,7 @@ class RequestManager(object):
             (p_id, r, t) for p_id, r, t in self._requests if r.piece_index != index
         )
 
-    def delete_all_for_peer(self, peer_id: bytes):
+    def delete_all_for_peer(self, peer_id: PeerId):
         self._requests = set((p_id, r, t) for p_id, r, t in self._requests if p_id != peer_id)
 
     def delete_all(self):
@@ -47,5 +47,5 @@ class RequestManager(object):
         new_len = len(self._requests)
         return prev_len - new_len
 
-    def existing_requests_for_peer(self, peer_id: bytes) -> Set[Block]:
+    def existing_requests_for_peer(self, peer_id: PeerId) -> Set[Block]:
         return set(r for p_id, r, _ in self._requests if p_id == peer_id)

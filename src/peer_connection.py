@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import peer_messages
 import peer_state
 from peer_messages import Choke, Have, Piece, PeerMessage, RawPeerMessage, Request, Unchoke
+from utility_types import PeerId
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -35,7 +36,7 @@ class PeerStream(object):
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
 
-    async def receive_handshake(self) -> bytes:
+    async def receive_handshake(self) -> PeerId:
         logger.debug("Starting to received handshake on {}".format(self._stream))
         data = None
         while len(self._msg_data) < 68:
@@ -100,7 +101,7 @@ class PeerStream(object):
         await self._stream.send_all(data)
         logger.debug("Sent message of length {} on {}".format(message_length, self._stream))
 
-    async def send_handshake(self, info_hash: bytes, peer_id: bytes) -> None:
+    async def send_handshake(self, info_hash: bytes, peer_id: PeerId) -> None:
         handshake_data = b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
         logger.debug("Sending handshake")
         logger.debug("Outgoing handshake = {!r}".format(handshake_data))
@@ -128,7 +129,7 @@ class PeerEngine(object):
         self,
         eng: engine.Engine,
         peer_address: peer_state.PeerAddress,
-        expected_peer_id: bytes | None,
+        expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
         *,
         send_peer_msg_to_engine: trio.MemorySendChannel[
@@ -138,8 +139,8 @@ class PeerEngine(object):
         self._tstate: torrent.Torrent = eng._state
         self._eng: engine.Engine = eng
         self._peer_address: peer_state.PeerAddress = peer_address
-        self._expected_peer_id: bytes | None = expected_peer_id
-        self._peer_id_and_state: Optional[tuple[bytes, peer_state.PeerState]] = None
+        self._expected_peer_id: PeerId | None = expected_peer_id
+        self._peer_id_and_state: Optional[tuple[PeerId, peer_state.PeerState]] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
         self._send_peer_msg_to_engine: trio.MemorySendChannel[
             tuple[peer_state.PeerState, RawPeerMessage]
@@ -186,7 +187,7 @@ class PeerEngine(object):
             )
             raise Exception("trio.MultiError was raised by PeerEngine")
 
-    async def receive_handshake(self) -> bytes:
+    async def receive_handshake(self) -> PeerId:
         # First, receive handshake
         data = await self._peer_stream.receive_handshake()
         logger.debug("Handshake data = {!r}".format(data))

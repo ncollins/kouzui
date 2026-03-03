@@ -4,7 +4,7 @@ from typing import TypeAlias
 
 import bitarray
 
-from utility_types import Block
+from utility_types import Block, PeerId
 
 
 class MessageTypeByte(IntEnum):
@@ -65,7 +65,7 @@ class Have:
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Piece:
-    peer_id: bytes
+    peer_id: PeerId
     block: Block
     data: bytes
 
