@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 import trio
 
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     import torrent
 import peer_messages
 import peer_state
-from internal_messages import BlockForPeer
-from utility_types import Block
+from peer_messages import Choke, Have, Piece, PeerMessage, RawPeerMessage, Request, Unchoke
+from shared_types import PeerAddress, PeerId
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -36,7 +36,7 @@ class PeerStream(object):
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
 
-    async def receive_handshake(self) -> bytes:
+    async def receive_handshake(self) -> PeerId:
         logger.debug("Starting to received handshake on {}".format(self._stream))
         data = None
         while len(self._msg_data) < 68:
@@ -101,7 +101,7 @@ class PeerStream(object):
         await self._stream.send_all(data)
         logger.debug("Sent message of length {} on {}".format(message_length, self._stream))
 
-    async def send_handshake(self, info_hash: bytes, peer_id: bytes) -> None:
+    async def send_handshake(self, info_hash: bytes, peer_id: PeerId) -> None:
         handshake_data = b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
         logger.debug("Sending handshake")
         logger.debug("Outgoing handshake = {!r}".format(handshake_data))
@@ -128,22 +128,22 @@ class PeerEngine(object):
     def __init__(
         self,
         eng: engine.Engine,
-        peer_address: peer_state.PeerAddress,
-        expected_peer_id: bytes | None,
+        peer_address: PeerAddress,
+        expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
         *,
-        send_peer_msg_to_engine: trio.MemorySendChannel[tuple[peer_state.PeerState, int, bytes]],
+        send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]],
     ):
         self._tstate: torrent.Torrent = eng._state
         self._eng: engine.Engine = eng
-        self._peer_address: peer_state.PeerAddress = peer_address
-        self._expected_peer_id: bytes | None = expected_peer_id
-        self._peer_id_and_state: Optional[tuple[bytes, peer_state.PeerState]] = None
+        self._peer_address: PeerAddress = peer_address
+        self._expected_peer_id: PeerId | None = expected_peer_id
+        self._peer_id: Optional[PeerId] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
-        self._send_peer_msg_to_engine: trio.MemorySendChannel[
-            tuple[peer_state.PeerState, int, bytes]
-        ] = send_peer_msg_to_engine
-        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[tuple[str, Any]]] = None
+        self._send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]] = (
+            send_peer_msg_to_engine
+        )
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
     async def run(self, initiate: bool = True) -> None:
         peer_id = None
@@ -163,29 +163,25 @@ class PeerEngine(object):
                     peer_id, self._tstate._num_pieces
                 )  # TODO don't use private property
                 self._eng._peers[peer_id] = peer_s
-                self._peer_id_and_state = (peer_id, peer_s)
+                self._peer_id = peer_id
                 self._receive_outgoing_data = peer_s.receive_outgoing_data
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
-            if self._peer_id_and_state and peer_id is not None:
+            if peer_id is not None:
                 self._eng._peers.pop(peer_id)
             logger.exception("Exception raised in PeerEngine")
-            logger.info(
-                "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
-            )
+            logger.info("Closing PeerEngine {} / {!r}".format(self._peer_address, peer_id))
             raise e
         except trio.MultiError:
-            if self._peer_id_and_state and peer_id is not None:
+            if peer_id is not None:
                 self._eng._peers.pop(peer_id)
             logger.exception("MultiError raised in PeerEngine")
-            logger.info(
-                "Closing PeerEngine {} / {}".format(self._peer_address, self._peer_id_and_state)
-            )
+            logger.info("Closing PeerEngine {} / {!r}".format(self._peer_address, peer_id))
             raise Exception("trio.MultiError was raised by PeerEngine")
 
-    async def receive_handshake(self) -> bytes:
+    async def receive_handshake(self) -> PeerId:
         # First, receive handshake
         data = await self._peer_stream.receive_handshake()
         logger.debug("Handshake data = {!r}".format(data))
@@ -212,13 +208,14 @@ class PeerEngine(object):
         logger.debug("Sent handshake to {}".format(self._peer_address))
 
     async def receiving_loop(self) -> None:
-        assert self._peer_id_and_state is not None
-        peer_id = self._peer_id_and_state[0]
+        assert self._peer_id is not None
         while True:
-            logging.debug("receiving_loop for {!r}".format(peer_id))
+            logging.debug("receiving_loop for {!r}".format(self._peer_id))
             messages = await self._peer_stream.receive_message()
             for length, data in messages:
-                logger.debug("Received message of length {} from {!r}".format(length, peer_id))
+                logger.debug(
+                    "Received message of length {} from {!r}".format(length, self._peer_id)
+                )
                 if length == 0:
                     # keepalive message
                     pass
@@ -227,95 +224,88 @@ class PeerEngine(object):
                     msg_payload = data[1:]
                     logger.debug("Putting message in queue for engine")
                     await self._send_peer_msg_to_engine.send(
-                        (self._peer_id_and_state[1], msg_type, msg_payload)
-                    )  # TODO should use peer_id
+                        (
+                            self._peer_id,
+                            RawPeerMessage(msg_type=msg_type, payload=msg_payload),
+                        )
+                    )
 
     async def send_bitfield(self) -> None:
         raw_pieces = self._tstate._complete  # TODO don't use private property
-        raw_msg = bytes([peer_messages.PeerMsg.BITFIELD])
+        raw_msg = bytes([peer_messages.MessageTypeByte.BITFIELD])
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
     async def send_choke(self) -> None:
-        raw_msg = bytes([peer_messages.PeerMsg.CHOKE])
+        raw_msg = bytes([peer_messages.MessageTypeByte.CHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def send_unchoke(self) -> None:
-        raw_msg = bytes([peer_messages.PeerMsg.UNCHOKE])
+        raw_msg = bytes([peer_messages.MessageTypeByte.UNCHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self) -> None:
-        assert self._peer_id_and_state is not None
+        assert self._peer_id is not None
         assert self._receive_outgoing_data is not None
-        logger.debug("About to send bitfield to {!r}".format(self._peer_id_and_state[0]))
+        logger.debug("About to send bitfield to {!r}".format(self._peer_id))
         await self.send_bitfield()
-        logger.debug("Sent bitfield to {!r}".format(self._peer_id_and_state[0]))
+        logger.debug("Sent bitfield to {!r}".format(self._peer_id))
         while True:
             logging.debug("sending_loop")
-            command, data = "keepalive", None
+            msg: PeerMessage | None = None
             with trio.move_on_after(KEEPALIVE_SECONDS):
-                command, data = await self._receive_outgoing_data.receive()
-            if command == "blocks_to_request":
-                for block in data:
-                    assert isinstance(block, Block)
-                    raw_msg = bytes([peer_messages.PeerMsg.REQUEST])
+                msg = await self._receive_outgoing_data.receive()
+            match msg:
+                case None:
+                    logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id))
+                    await self._peer_stream.send_keepalive()
+                    logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id))
+                case Request(blocks=blocks):
+                    for block in blocks:
+                        raw_msg = bytes([peer_messages.MessageTypeByte.REQUEST])
+                        raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
+                        raw_msg += (block.block_start).to_bytes(4, byteorder="big")
+                        raw_msg += (block.block_length).to_bytes(4, byteorder="big")
+                        logger.debug(
+                            "Pre-send REQUEST for {} from {!r}".format(
+                                (block.piece_index, block.block_start, block.block_length),
+                                self._peer_id,
+                            )
+                        )
+                        await self._peer_stream.send_message(raw_msg)
+                        logger.debug(
+                            "Sent REQUEST for {} from {!r}".format(
+                                (block.piece_index, block.block_start, block.block_length),
+                                self._peer_id,
+                            )
+                        )
+                case Piece(block=block, data=data):
+                    raw_msg = bytes([peer_messages.MessageTypeByte.PIECE])
                     raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_start).to_bytes(4, byteorder="big")
-                    raw_msg += (block.block_length).to_bytes(4, byteorder="big")
-                    logger.debug(
-                        "Pre-send REQUEST for {} from {!r}".format(
-                            (block.piece_index, block.block_start, block.block_length),
-                            self._peer_id_and_state[0],
-                        )
-                    )
+                    raw_msg += data
+                    logger.debug("Pre-send PIECE {} to {!r}".format(block, self._peer_id))
                     await self._peer_stream.send_message(raw_msg)
-                    logger.debug(
-                        "Sent REQUEST for {} from {!r}".format(
-                            (block.piece_index, block.block_start, block.block_length),
-                            self._peer_id_and_state[0],
-                        )
-                    )
-            elif command == "block_to_upload":
-                assert isinstance(data, BlockForPeer)
-                raw_msg = bytes([peer_messages.PeerMsg.PIECE])
-                raw_msg += (data.block.piece_index).to_bytes(4, byteorder="big")
-                raw_msg += (data.block.block_start).to_bytes(4, byteorder="big")
-                raw_msg += data.data
-                logger.debug(
-                    "Pre-send PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0])
-                )
-                await self._peer_stream.send_message(raw_msg)
-                logger.debug("Sent PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0]))
-            elif command == "announce_have_piece":
-                raw_msg = bytes([peer_messages.PeerMsg.HAVE])
-                raw_msg += (data).to_bytes(4, byteorder="big")
-                logger.debug("Pre-send HAVE {} to {!r}".format(data, self._peer_id_and_state[0]))
-                await self._peer_stream.send_message(raw_msg)
-                logger.debug("Sent HAVE {} to {!r}".format(data, self._peer_id_and_state[0]))
-            elif command == "choke":
-                logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id_and_state[0]))
-                await self.send_choke()
-                logger.debug("Sent CHOKE to {!r}".format(self._peer_id_and_state[0]))
-            elif command == "unchoke":
-                logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
-                await self.send_unchoke()
-                logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id_and_state[0]))
-            elif command == "keepalive":
-                logger.debug("Pre-send KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-                await self._peer_stream.send_keepalive()
-                logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
-
-            else:
-                logger.warning(
-                    "PeerEngine for {!r} received unsupported message from Engine: {}".format(
-                        self._peer_id_and_state[0], (command, data)
-                    )
-                )
+                    logger.debug("Sent PIECE {} to {!r}".format(block, self._peer_id))
+                case Have(piece_index=piece_index):
+                    raw_msg = bytes([peer_messages.MessageTypeByte.HAVE])
+                    raw_msg += (piece_index).to_bytes(4, byteorder="big")
+                    logger.debug("Pre-send HAVE {} to {!r}".format(piece_index, self._peer_id))
+                    await self._peer_stream.send_message(raw_msg)
+                    logger.debug("Sent HAVE {} to {!r}".format(piece_index, self._peer_id))
+                case Choke():
+                    logger.debug("Pre-send CHOKE to {!r}".format(self._peer_id))
+                    await self.send_choke()
+                    logger.debug("Sent CHOKE to {!r}".format(self._peer_id))
+                case Unchoke():
+                    logger.debug("Pre-send UNCHOKE to {!r}".format(self._peer_id))
+                    await self.send_unchoke()
+                    logger.debug("Sent UNCHOKE to {!r}".format(self._peer_id))
 
 
 async def start_peer_engine(
     eng: engine.Engine,
-    peer_address: peer_state.PeerAddress,
+    peer_address: PeerAddress,
     stream: trio.SocketStream,
     initiate: bool = True,
 ) -> None:
@@ -332,10 +322,12 @@ def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[
     async def handler(stream: trio.SocketStream) -> None:
         peer_address = None
         try:
+            # NOTE: stream.socket.getpeername() could actually return anything, but for
+            # an IPv4 connection it returns an (ip, port) pair
             peer_info = stream.socket.getpeername()
-            ip: bytes = peer_info[0]
+            ip: bytes = peer_info[0].encode()
             port: int = peer_info[1]
-            peer_address = peer_state.PeerAddress(ip, port)
+            peer_address = PeerAddress(ip=ip, port=port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
             await start_peer_engine(eng, peer_address, stream, initiate=False)
         except Exception as e:  # TODO this might be too general
@@ -348,7 +340,7 @@ def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[
     return handler
 
 
-async def make_standalone(eng: engine.Engine, peer_address: peer_state.PeerAddress) -> None:
+async def make_standalone(eng: engine.Engine, peer_address: PeerAddress) -> None:
     logger.debug("Starting outgoing peer connection to {}".format(peer_address))
     stream: trio.SocketStream | None = None
     try:

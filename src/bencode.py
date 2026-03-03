@@ -9,6 +9,7 @@ from typing import Any, BinaryIO, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import torrent
+from shared_types import PeerAddress, PeerId
 
 
 def parse_string_length(s: BinaryIO, i: bytes = b"") -> int:
@@ -142,7 +143,7 @@ def encode_value(v: int | bytes | str | list[Any] | dict[bytes, Any]) -> bytes:
         raise Exception('Unsupported type for bencoding: "{}"'.format(type(v)))
 
 
-def parse_compact_peers(raw_bytes: bytes) -> list[tuple[bytes, int]]:
+def parse_compact_peers(raw_bytes: bytes) -> list[PeerAddress]:
     if (len(raw_bytes) % 6) != 0:
         raise Exception("Peer list length is not a multiple of 6.")
     else:
@@ -150,28 +151,31 @@ def parse_compact_peers(raw_bytes: bytes) -> list[tuple[bytes, int]]:
         for i in range(0, len(raw_bytes), 6):
             ip = ".".join(str(x) for x in raw_bytes[i : i + 4]).encode()
             port = int.from_bytes(raw_bytes[i + 4 : i + 6], byteorder="big")
-            peers.append((ip, port))
+            peers.append(PeerAddress(ip=ip, port=port))
         return peers
 
 
-def replace_with_localhost(
-    tripple: tuple[bytes, int, bytes | None],
-) -> tuple[bytes, int, bytes | None]:
-    if tripple[0] == b"::1":
-        return (b"localhost", tripple[1], tripple[2])
+def replace_ipv6_lookback_with_localhost(address: PeerAddress) -> PeerAddress:
+    if address.ip == b"::1":
+        # return dataclasses.replace(address, ip=b"localhost")
+        return PeerAddress(ip=b"localhost", port=address.port)
     else:
-        return tripple
+        return address
 
 
-def parse_peers(data: bytes, torrent: torrent.Torrent) -> list[tuple[bytes, int, bytes | None]]:
-    # TODO this try/except logic probably shouldn't be here as it's not really
-    # a bencode issue
-    try:
-        peer_list = [(ip, port, None) for ip, port in parse_compact_peers(data)]
-    except Exception:
-        peer_list = [(x[b"ip"], x[b"port"], x[b"peer id"]) for x in data]  # type: ignore
+def parse_peers(
+    data: bytes | list[collections.OrderedDict[bytes, Any]], torrent: torrent.Torrent
+) -> list[tuple[PeerAddress, PeerId | None]]:
+    peer_list: list[tuple[PeerAddress, PeerId | None]] = []
+    match data:
+        case bytes():
+            peer_list = [(address, None) for address in parse_compact_peers(data)]
+        case list():
+            peer_list = [
+                (PeerAddress(ip=x[b"ip"], port=x[b"port"]), PeerId(x[b"peer id"])) for x in data
+            ]
     return [
-        replace_with_localhost(tripple)
-        for tripple in peer_list
-        if tripple[1] != torrent.listening_port
+        (replace_ipv6_lookback_with_localhost(address), peer_id)
+        for address, peer_id in peer_list
+        if address.port != torrent.listening_port
     ]

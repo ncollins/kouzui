@@ -5,6 +5,8 @@ import random
 import re
 from typing import NamedTuple
 
+from shared_types import PeerId
+
 import bitarray
 
 from config import DEFAULT_LISTENING_PORT
@@ -47,7 +49,7 @@ def _random_char() -> str:
     return c
 
 
-def _generate_peer_id() -> bytes:
+def _generate_peer_id() -> PeerId:
     return "".join(_random_char() for _ in range(0, 20)).encode()
 
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from utility_types import Block
+from shared_types import Block, PeerId
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -21,12 +21,5 @@ class WriteConfirmation:
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class BlockToRead:
-    peer_id: bytes
+    peer_id: PeerId
     block: Block
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class BlockForPeer:
-    peer_id: bytes
-    block: Block
-    data: bytes

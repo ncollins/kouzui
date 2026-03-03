@@ -1,11 +1,13 @@
+from dataclasses import dataclass
 from enum import IntEnum
+from typing import TypeAlias
 
 import bitarray
 
-from utility_types import Block
+from shared_types import Block, PeerId
 
 
-class PeerMsg(IntEnum):
+class MessageTypeByte(IntEnum):
     CHOKE = 0
     UNCHOKE = 1
     INTERESTED = 2
@@ -15,6 +17,12 @@ class PeerMsg(IntEnum):
     REQUEST = 6
     PIECE = 7
     CANCEL = 8
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class RawPeerMessage:
+    msg_type: int
+    payload: bytes
 
 
 def parse_have(s: bytes) -> int:
@@ -43,3 +51,33 @@ def parse_piece(s):
     begin = int.from_bytes(s[4:8], byteorder="big")
     data = s[8:]
     return (index, begin, data)
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Request:
+    blocks: set[Block]
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Have:
+    piece_index: int
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Piece:
+    peer_id: PeerId
+    block: Block
+    data: bytes
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Choke:
+    pass
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Unchoke:
+    pass
+
+
+PeerMessage: TypeAlias = Request | Have | Piece | Choke | Unchoke
