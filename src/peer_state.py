@@ -1,6 +1,5 @@
 import datetime
 from enum import Enum
-from typing import NamedTuple
 
 import bitarray
 import trio
@@ -8,8 +7,6 @@ import trio
 import config
 from peer_messages import PeerMessage
 from utility_types import PeerId
-
-PeerAddress = NamedTuple("PeerAddress", [("ip", bytes), ("port", int)])
 
 
 class PeerType(Enum):

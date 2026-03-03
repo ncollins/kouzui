@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 import peer_messages
 import peer_state
 from peer_messages import Choke, Have, Piece, PeerMessage, RawPeerMessage, Request, Unchoke
-from utility_types import PeerId
+from utility_types import PeerAddress, PeerId
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
@@ -128,7 +128,7 @@ class PeerEngine(object):
     def __init__(
         self,
         eng: engine.Engine,
-        peer_address: peer_state.PeerAddress,
+        peer_address: PeerAddress,
         expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
         *,
@@ -136,7 +136,7 @@ class PeerEngine(object):
     ):
         self._tstate: torrent.Torrent = eng._state
         self._eng: engine.Engine = eng
-        self._peer_address: peer_state.PeerAddress = peer_address
+        self._peer_address: PeerAddress = peer_address
         self._expected_peer_id: PeerId | None = expected_peer_id
         self._peer_id: Optional[PeerId] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
@@ -305,7 +305,7 @@ class PeerEngine(object):
 
 async def start_peer_engine(
     eng: engine.Engine,
-    peer_address: peer_state.PeerAddress,
+    peer_address: PeerAddress,
     stream: trio.SocketStream,
     initiate: bool = True,
 ) -> None:
@@ -325,7 +325,7 @@ def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[
             peer_info = stream.socket.getpeername()
             ip: bytes = peer_info[0]
             port: int = peer_info[1]
-            peer_address = peer_state.PeerAddress(ip, port)
+            peer_address = PeerAddress(ip=ip, port=port)
             logger.debug("Received incoming peer connection from {}".format(peer_address))
             await start_peer_engine(eng, peer_address, stream, initiate=False)
         except Exception as e:  # TODO this might be too general
@@ -338,7 +338,7 @@ def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[
     return handler
 
 
-async def make_standalone(eng: engine.Engine, peer_address: peer_state.PeerAddress) -> None:
+async def make_standalone(eng: engine.Engine, peer_address: PeerAddress) -> None:
     logger.debug("Starting outgoing peer connection to {}".format(peer_address))
     stream: trio.SocketStream | None = None
     try:

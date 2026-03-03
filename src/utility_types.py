@@ -9,3 +9,9 @@ class Block:
     piece_index: int
     block_start: int
     block_length: int
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerAddress:
+    ip: bytes
+    port: int

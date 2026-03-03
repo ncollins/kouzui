@@ -29,7 +29,7 @@ from internal_messages import (
     WriteConfirmation,
 )
 from peer_messages import Choke, Have, Piece, RawPeerMessage, Request, Unchoke
-from utility_types import Block, PeerId
+from utility_types import Block, PeerAddress, PeerId
 
 logger = logging.getLogger("engine")
 
@@ -90,8 +90,8 @@ class Engine(object):
         self._state: state.Torrent = torrent
         # interact with self
         self._peers_without_connection: tuple[
-            trio.MemorySendChannel[peer_state.PeerAddress],
-            trio.MemoryReceiveChannel[peer_state.PeerAddress],
+            trio.MemorySendChannel[PeerAddress],
+            trio.MemoryReceiveChannel[PeerAddress],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # interact with FileManager
         self._complete_pieces_to_write: trio.MemorySendChannel[
@@ -207,8 +207,7 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
             peers = [
-                (peer_state.PeerAddress(ip, port), peer_id)
-                for ip, port, peer_id in peer_ips_and_ports
+                (PeerAddress(ip=ip, port=port), peer_id) for ip, port, peer_id in peer_ips_and_ports
             ]
             logger.info("Found peers from tracker: {}".format(peers))
             await self.update_peers(peers)
@@ -234,7 +233,7 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: list[tuple[peer_state.PeerAddress, PeerId | None]]) -> None:
+    async def update_peers(self, peers: list[tuple[PeerAddress, PeerId | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
                 logger.info("Peer already exists: {!r}".format(peer_id))
