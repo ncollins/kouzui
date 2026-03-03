@@ -7,7 +7,7 @@ import bitarray
 from utility_types import Block
 
 
-class PeerMsg(IntEnum):
+class MessageTypeByte(IntEnum):
     CHOKE = 0
     UNCHOKE = 1
     INTERESTED = 2

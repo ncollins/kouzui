@@ -307,30 +307,30 @@ class Engine(object):
             return
         peer_state = self._peers[peer_id]
         match msg_type:
-            case peer_messages.PeerMsg.CHOKE:
+            case peer_messages.MessageTypeByte.CHOKE:
                 logger.info("Received CHOKE from {!r}".format(peer_id))
                 peer_state.choke_us()
-            case peer_messages.PeerMsg.UNCHOKE:
+            case peer_messages.MessageTypeByte.UNCHOKE:
                 logger.info("Received UNCHOKE from {!r}".format(peer_id))
                 peer_state.unchoke_us()
-            case peer_messages.PeerMsg.INTERESTED:
+            case peer_messages.MessageTypeByte.INTERESTED:
                 logger.warning(
                     "Received INTERESTED from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-            case peer_messages.PeerMsg.NOT_INTERESTED:
+            case peer_messages.MessageTypeByte.NOT_INTERESTED:
                 logger.warning(
                     "Received NOT_INTERESTED from {!r} (not implemented)".format(peer_id)
                 )  # TODO
-            case peer_messages.PeerMsg.HAVE:
+            case peer_messages.MessageTypeByte.HAVE:
                 index: int = peer_messages.parse_have(msg_payload)
                 logger.debug("Received HAVE {} from {!r}".format(index, peer_id))
                 peer_state.get_pieces()[index] = True
-            case peer_messages.PeerMsg.BITFIELD:
+            case peer_messages.MessageTypeByte.BITFIELD:
                 logger.info("Received BITFIELD from {!r}".format(peer_id))
                 # TODO would be useful to log what percentage of the file the peer has
                 bitfield = peer_messages.parse_bitfield(msg_payload)
                 peer_state.set_pieces(bitfield)
-            case peer_messages.PeerMsg.REQUEST:
+            case peer_messages.MessageTypeByte.REQUEST:
                 self._inc_stats(StatField.REQUESTS_IN)
                 request_info = peer_messages.parse_request_or_cancel(msg_payload)
                 logger.info(
@@ -352,7 +352,7 @@ class Engine(object):
                             peer_state.peer_id, request_info.piece_index
                         )
                     )
-            case peer_messages.PeerMsg.PIECE:
+            case peer_messages.MessageTypeByte.PIECE:
                 (index, begin, data) = peer_messages.parse_piece(msg_payload)
                 self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
@@ -362,7 +362,7 @@ class Engine(object):
                 )
                 peer_state.inc_download_counters()
                 await self.handle_block_received(index, begin, data)
-            case peer_messages.PeerMsg.CANCEL:
+            case peer_messages.MessageTypeByte.CANCEL:
                 logger.warning(
                     "Received CANCEL from {!r} (not implemented)".format(peer_id)
                 )  # TODO

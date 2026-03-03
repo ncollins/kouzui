@@ -231,16 +231,16 @@ class PeerEngine(object):
 
     async def send_bitfield(self) -> None:
         raw_pieces = self._tstate._complete  # TODO don't use private property
-        raw_msg = bytes([peer_messages.PeerMsg.BITFIELD])
+        raw_msg = bytes([peer_messages.MessageTypeByte.BITFIELD])
         raw_msg += raw_pieces.tobytes()
         await self._peer_stream.send_message(raw_msg)
 
     async def send_choke(self) -> None:
-        raw_msg = bytes([peer_messages.PeerMsg.CHOKE])
+        raw_msg = bytes([peer_messages.MessageTypeByte.CHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def send_unchoke(self) -> None:
-        raw_msg = bytes([peer_messages.PeerMsg.UNCHOKE])
+        raw_msg = bytes([peer_messages.MessageTypeByte.UNCHOKE])
         await self._peer_stream.send_message(raw_msg)
 
     async def sending_loop(self) -> None:
@@ -260,7 +260,7 @@ class PeerEngine(object):
                 logger.debug("Sent KEEPALIVE to {!r}".format(self._peer_id_and_state[0]))
             elif isinstance(msg, Request):
                 for block in msg.blocks:
-                    raw_msg = bytes([peer_messages.PeerMsg.REQUEST])
+                    raw_msg = bytes([peer_messages.MessageTypeByte.REQUEST])
                     raw_msg += (block.piece_index).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_start).to_bytes(4, byteorder="big")
                     raw_msg += (block.block_length).to_bytes(4, byteorder="big")
@@ -278,7 +278,7 @@ class PeerEngine(object):
                         )
                     )
             elif isinstance(msg, Piece):
-                raw_msg = bytes([peer_messages.PeerMsg.PIECE])
+                raw_msg = bytes([peer_messages.MessageTypeByte.PIECE])
                 raw_msg += (msg.block.piece_index).to_bytes(4, byteorder="big")
                 raw_msg += (msg.block.block_start).to_bytes(4, byteorder="big")
                 raw_msg += msg.data
@@ -288,7 +288,7 @@ class PeerEngine(object):
                 await self._peer_stream.send_message(raw_msg)
                 logger.debug("Sent PIECE {} to {!r}".format(msg.block, self._peer_id_and_state[0]))
             elif isinstance(msg, Have):
-                raw_msg = bytes([peer_messages.PeerMsg.HAVE])
+                raw_msg = bytes([peer_messages.MessageTypeByte.HAVE])
                 raw_msg += (msg.piece_index).to_bytes(4, byteorder="big")
                 logger.debug(
                     "Pre-send HAVE {} to {!r}".format(msg.piece_index, self._peer_id_and_state[0])
