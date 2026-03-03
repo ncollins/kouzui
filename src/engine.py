@@ -151,7 +151,8 @@ class Engine(object):
                 self._auto_shutdown and all(complete_peers) and self._state._complete.all()
             ):  # TODO remove private variable access
                 await self._complete_pieces_to_write.send(AllPiecesWritten())
-                raise KeyboardInterrupt  # TODO should use a better exception, or something else entirely
+                await trio.sleep(1)
+                raise SystemExit(0)
             elif self._state._complete.all():  # TODO remove private variable access
                 await self._complete_pieces_to_write.send(AllPiecesWritten())
             await trio.sleep(2)
@@ -464,7 +465,7 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent):
+def run(torrent, *, auto_shutdown: bool):
     try:
         # create FileManager and check hashes if file already exists
         file_wrapper = file_manager.FileWrapper(torrent=torrent)
@@ -503,6 +504,7 @@ def run(torrent):
             write_confirmations=r_write_confirmations,
             blocks_to_read=s_blocks_to_read,
             blocks_for_peers=r_blocks_for_peers,
+            auto_shutdown=auto_shutdown,
         )
 
         async def run():

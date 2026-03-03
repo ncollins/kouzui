@@ -30,7 +30,7 @@ def read_torrent_file(torrent_path):
     return (torrent_data, torrent_info)
 
 
-def run(log_level, torrent_path, listening_port, download_dir):
+def run(log_level, torrent_path, listening_port, download_dir, auto_shutdown: bool):
     if log_level:
         log_level = getattr(logging, log_level.upper())
     else:
@@ -47,11 +47,17 @@ def run(log_level, torrent_path, listening_port, download_dir):
     download_dir = download_dir if download_dir else os.path.dirname(os.path.abspath(__file__))
     port = int(listening_port) if listening_port else None
     t = Torrent(torrent_data, torrent_info, download_dir, port)
-    engine.run(t)
+    engine.run(t, auto_shutdown=auto_shutdown)
 
 
 def run_command(args):
-    run(args.log_level, args.torrent_path, args.listening_port, args.download_dir)
+    run(
+        args.log_level,
+        args.torrent_path,
+        args.listening_port,
+        args.download_dir,
+        args.auto_shutdown,
+    )
 
 
 def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
@@ -102,13 +108,15 @@ def test(test_dir, torrent_path, number_of_clients):
 
         shutil.copy(test_file, tmp_file)
 
-        p = mp.Process(target=run, args=("INFO", torrent_path, 50000 + i, client_dir))
+        p = mp.Process(target=run, args=("INFO", torrent_path, 50000 + i, client_dir, False))
         client_processes.append((p, final_file, tmp_file))
 
     torrent_start_time = time.perf_counter()
     for p, _, _ in client_processes:
         p.start()
     # Wait for clients to complete and shutdown
+    # TODO 2026-03-03: this code checking that all the clients have completed could be
+    # replaced by the auto_shutdown argument passed to engine.run
     while not all(os.path.exists(final_location) for _, final_location, _ in client_processes):
         time.sleep(1)
     end_time = time.perf_counter()
@@ -132,6 +140,11 @@ def main():
     run.add_argument("--listening-port", help="listening port for incoming peer connections")
     run.add_argument("--log-level", help="DEBUG/INFO/WARNING")
     run.add_argument("--download-dir", help="directory to save the file in")
+    run.add_argument(
+        "--auto-shutdown",
+        action="store_true",
+        help="automatically shutdown if there are no peers downloading",
+    )
     run.set_defaults(func=run_command)
     # make-test-files sub-command ----------
     make_test_files = sub_commands.add_parser(

@@ -15,7 +15,7 @@ spec:
       image: localhost/kouzui-clients:latest
       imagePullPolicy: Never
       # Poll localhost:8000 until the tracker container is accepting connections,
-      # then hand off to the test runner. Both containers share the pod's network
+      # then hand off to the test runner. All containers share the pod's network
       # namespace so the tracker is reachable on localhost.
       command: ["sh", "-c"]
       args:
@@ -25,6 +25,26 @@ spec:
             sleep 1
           done
           exec uv run python src/main.py test-run /test_data/test.torrent --test-dir /test_data --number-of-clients 3
+      volumeMounts:
+        - name: test-data
+          mountPath: /test_data
+
+    - name: single-client
+      image: localhost/kouzui-clients:latest
+      imagePullPolicy: Never
+      # Poll localhost:8000 until the tracker container is accepting connections,
+      # then hand off to the test runner. All containers share the pod's network
+      # namespace so the tracker is reachable on localhost.
+      command: ["sh", "-c"]
+      args:
+        - |
+          mkdir -p /test_data/clients/client-3/
+          cp /test_data/test_file.bin.3.part /test_data/clients/client-3/test_file.bin.part
+          until python3 -c "import socket; socket.create_connection(('localhost', 8000), 1)" 2>/dev/null; do
+            echo "Waiting for tracker..."
+            sleep 1
+          done
+          exec uv run python src/main.py run /test_data/test.torrent --download-dir /test_data/clients/client-3/ --listening-port 51234 --log-level INFO  --auto-shutdown
       volumeMounts:
         - name: test-data
           mountPath: /test_data

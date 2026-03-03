@@ -35,8 +35,10 @@ class FileWrapper(object):
     def create_file_or_return_hashes(self):
         if os.path.exists(self._final_path):
             self._file_path = self._final_path
+            logger.info(f"data file exists at {self._file_path}")
         else:
             self._file_path = self._tmp_path
+            logger.info(f"using _tmp_path at {self._tmp_path}")
 
         assert self._file_path is not None
 
@@ -49,8 +51,10 @@ class FileWrapper(object):
                 h = hashlib.sha1(p).digest()
                 hashes.append(h)
             self._file.close()
+            logger.info("found file and calculated existing hashes")
         except FileNotFoundError:
             _create_empty_file(self._file_path, self._torrent)  # TODO don't read private property
+            logger.info(f"created empty file at {self._file_path}")
             hashes = None
         self._file = open(self._file_path, "rb+")
         return hashes

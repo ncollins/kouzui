@@ -38,7 +38,7 @@ app = typer.Typer()
 
 FILE_SIZE = 2 * 1024 * 1024  # 2 MB
 PIECE_LENGTH = 256 * 1024  # 256 KB  →  8 pieces total
-NUM_CLIENTS = 3  # keep in sync with compose.yml / pod.yml
+NUM_CLIENTS = 4  # keep in sync with compose.yml / pod.yml
 
 
 # ---------------------------------------------------------------------------
