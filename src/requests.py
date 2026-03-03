@@ -2,7 +2,7 @@ import datetime
 import logging
 from typing import Set
 
-from utility_types import Block, PeerId
+from shared_types import Block, PeerId
 
 logger = logging.getLogger("requests")
 

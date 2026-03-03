@@ -2,7 +2,7 @@ from collections import OrderedDict
 from unittest.mock import MagicMock
 
 from bencode import parse_compact_peers, parse_peers
-from utility_types import PeerAddress
+from shared_types import PeerAddress
 
 
 def test_parse_compact_peers():

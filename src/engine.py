@@ -29,7 +29,7 @@ from internal_messages import (
     WriteConfirmation,
 )
 from peer_messages import Choke, Have, Piece, RawPeerMessage, Request, Unchoke
-from utility_types import Block, PeerAddress, PeerId
+from shared_types import Block, PeerAddress, PeerId
 
 logger = logging.getLogger("engine")
 

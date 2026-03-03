@@ -6,7 +6,7 @@ import trio
 
 import config
 from peer_messages import PeerMessage
-from utility_types import PeerId
+from shared_types import PeerId
 
 
 class PeerType(Enum):

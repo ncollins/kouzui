@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from utility_types import Block, PeerId
+from shared_types import Block, PeerId
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 import peer_messages
 import peer_state
 from peer_messages import Choke, Have, Piece, PeerMessage, RawPeerMessage, Request, Unchoke
-from utility_types import PeerAddress, PeerId
+from shared_types import PeerAddress, PeerId
 
 from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 

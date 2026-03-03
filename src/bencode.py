@@ -9,7 +9,7 @@ from typing import Any, BinaryIO, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import torrent
-from utility_types import PeerAddress, PeerId
+from shared_types import PeerAddress, PeerId
 
 
 def parse_string_length(s: BinaryIO, i: bytes = b"") -> int:

@@ -5,7 +5,7 @@ import random
 import re
 from typing import NamedTuple
 
-from utility_types import PeerId
+from shared_types import PeerId
 
 import bitarray
 

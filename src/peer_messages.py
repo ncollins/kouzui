@@ -4,7 +4,7 @@ from typing import TypeAlias
 
 import bitarray
 
-from utility_types import Block, PeerId
+from shared_types import Block, PeerId
 
 
 class MessageTypeByte(IntEnum):
