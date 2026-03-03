@@ -132,9 +132,7 @@ class PeerEngine(object):
         expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
         *,
-        send_peer_msg_to_engine: trio.MemorySendChannel[
-            tuple[peer_state.PeerState, RawPeerMessage]
-        ],
+        send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]],
     ):
         self._tstate: torrent.Torrent = eng._state
         self._eng: engine.Engine = eng
@@ -142,9 +140,9 @@ class PeerEngine(object):
         self._expected_peer_id: PeerId | None = expected_peer_id
         self._peer_id_and_state: Optional[tuple[PeerId, peer_state.PeerState]] = None
         self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
-        self._send_peer_msg_to_engine: trio.MemorySendChannel[
-            tuple[peer_state.PeerState, RawPeerMessage]
-        ] = send_peer_msg_to_engine
+        self._send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]] = (
+            send_peer_msg_to_engine
+        )
         self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
     async def run(self, initiate: bool = True) -> None:
@@ -230,7 +228,7 @@ class PeerEngine(object):
                     logger.debug("Putting message in queue for engine")
                     await self._send_peer_msg_to_engine.send(
                         (
-                            self._peer_id_and_state[1],
+                            self._peer_id_and_state[0],
                             RawPeerMessage(msg_type=msg_type, payload=msg_payload),
                         )
                     )  # TODO should use peer_id

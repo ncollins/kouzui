@@ -104,8 +104,8 @@ class Engine(object):
         self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[peer_state.PeerState, RawPeerMessage]],
-            trio.MemoryReceiveChannel[tuple[peer_state.PeerState, RawPeerMessage]],
+            trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]],
+            trio.MemoryReceiveChannel[tuple[PeerId, RawPeerMessage]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
@@ -124,7 +124,7 @@ class Engine(object):
         logger.debug("stats updated: {}".format(self._stats))
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[peer_state.PeerState, RawPeerMessage]]:
+    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -404,9 +404,9 @@ class Engine(object):
     async def peer_messages_loop(self) -> None:
         while True:
             logger.debug("peer_messages_loop")
-            peer_state, raw_msg = await self._msg_from_peer[1].receive()  # TODO should use peer_id
-            logger.debug("Engine recieved peer message from {!r}".format(peer_state.peer_id))
-            await self.handle_peer_message(peer_state.peer_id, raw_msg)  # TODO should use peer_id
+            peer_id, raw_msg = await self._msg_from_peer[1].receive()
+            logger.debug("Engine recieved peer message from {!r}".format(peer_id))
+            await self.handle_peer_message(peer_id, raw_msg)
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:
