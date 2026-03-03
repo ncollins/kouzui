@@ -41,9 +41,9 @@ MAX_TEXT_LENGTH = 35
 def pretty_print(width, p_id, pieces, received_from, sent_to):
     lines = [
         p_id.decode("ascii"),
-        "Complete      : {}%".format(math.floor(sum(pieces) / len(pieces) * 100)),
-        "Received from : {} blocks".format(received_from) if (received_from is not None) else "",
-        "Sent to       : {} blocks".format(sent_to) if (sent_to is not None) else "",
+        f"Complete      : {math.floor(sum(pieces) / len(pieces) * 100)}%",
+        f"Received from : {received_from} blocks" if (received_from is not None) else "",
+        f"Sent to       : {sent_to} blocks" if (sent_to is not None) else "",
     ]
     ##
     # MAX_TEXT_LENGTH = max(map(len,lines))

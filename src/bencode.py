@@ -83,7 +83,7 @@ def parse_value(s: BinaryIO) -> int | bytes | list[Any] | dict[bytes, Any] | Non
     elif c == b"e" or c == "":
         return None
     else:
-        raise Exception("Expected a digit, 'i', 'l', or 'd'. Got {!r}".format(c))
+        raise Exception(f"Expected a digit, 'i', 'l', or 'd'. Got {c!r}")
 
 
 # def parse(s):
@@ -140,7 +140,7 @@ def encode_value(v: int | bytes | str | list[Any] | dict[bytes, Any]) -> bytes:
     elif isinstance(v, dict):
         return encode_dict(v)
     else:
-        raise Exception('Unsupported type for bencoding: "{}"'.format(type(v)))
+        raise Exception(f'Unsupported type for bencoding: "{type(v)}"')
 
 
 def parse_compact_peers(raw_bytes: bytes) -> list[PeerAddress]:

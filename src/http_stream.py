@@ -13,18 +13,18 @@ class HttpStream:
     def __init__(self, stream: trio.abc.Stream, role: Type[h11.CLIENT | h11.SERVER]) -> None:
         self.stream: trio.abc.Stream = stream
         self.conn: h11.Connection = h11.Connection(our_role=role)
-        logger.debug("h11 connection {}".format(self.conn))
-        logger.debug("our role = {}".format(self.conn.our_role))
-        logger.debug("their role = {}".format(self.conn.their_role))
+        logger.debug(f"h11 connection {self.conn}")
+        logger.debug(f"our role = {self.conn.our_role}")
+        logger.debug(f"their role = {self.conn.their_role}")
 
     async def receive_event(self) -> h11.Event | type[h11.NEED_DATA] | type[h11.PAUSED]:
         while True:
             logger.debug("about to get h11 event...")
             e = self.conn.next_event()
-            logger.debug('h11 event = "{}"'.format(str(e)))
+            logger.debug(f'h11 event = "{e}"')
             if e == h11.NEED_DATA:
                 raw_bytes = await self.stream.receive_some(STREAM_CHUNK_SIZE)
-                logger.debug('raw bytes = "{}"'.format(str(raw_bytes)))
+                logger.debug(f'raw bytes = "{raw_bytes!r}"')
                 # if raw_bytes != b'':
                 self.conn.receive_data(raw_bytes)
                 logger.debug("sent data to h11 connection")
@@ -49,11 +49,11 @@ class HttpStream:
         raw_bytes = self.conn.send(e)
         if isinstance(e, h11.ConnectionClosed):
             await self.close()
-            logger.debug("handled {} by closing stream".format(str))
+            logger.debug(f"handled {str} by closing stream")
         else:
             assert raw_bytes is not None
             await self.stream.send_all(raw_bytes)
-            logger.debug("handled {} by sending {!r}".format(str(e), raw_bytes))
+            logger.debug(f"handled {str(e)} by sending {raw_bytes!r}")
 
     async def close(self) -> None:
         # TODO 2026-03-02: consider whether this should functionality should only

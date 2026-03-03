@@ -72,7 +72,7 @@ class FileWrapper(object):
         if self._file_path != self._final_path:
             self._file.close()
             os.rename(self._file_path, self._final_path)
-            logger.info("Moved {} to {}".format(self._file_path, self._final_path))
+            logger.info(f"Moved {self._file_path} to {self._final_path}")
             self._file_path = self._final_path
             self._file = open(self._file_path, "rb+")
 
@@ -108,7 +108,7 @@ class FileManager(object):
                 self._file_wrapper.move_file_to_final_location()
             else:
                 self._file_wrapper.write_piece(msg.index, msg.data)
-                logger.info("Wrote #{} to disk".format(msg.index))
+                logger.info(f"Wrote #{msg.index} to disk")
                 await self._write_confirmations.send(WriteConfirmation(index=msg.index))
 
     async def block_reading_loop(self):

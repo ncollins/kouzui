@@ -25,9 +25,7 @@ class RequestManager(object):
 
     def delete_all_for_piece(self, index: int):
         to_delete = set((p_id, r, t) for p_id, r, t in self._requests if r.piece_index == index)
-        logger.info(
-            "Found {} block requests to delete for piece index {}".format(len(to_delete), index)
-        )
+        logger.info(f"Found {len(to_delete)} block requests to delete for piece index {index}")
         self._requests = set(
             (p_id, r, t) for p_id, r, t in self._requests if r.piece_index != index
         )

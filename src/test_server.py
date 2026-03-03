@@ -19,7 +19,7 @@ async def handler(stream):
     # - EndOfMessage
     # - ConnectionClosed
 
-    print("Stream being handled. Connected to {}".format(stream.socket.getpeername()))
+    print(f"Stream being handled. Connected to {stream.socket.getpeername()}")
 
     request, data = await h.receive_with_data()
 
@@ -33,7 +33,7 @@ async def handler(stream):
 
 
 async def run_server(port):
-    print("Start server on port {}".format(port))
+    print(f"Start server on port {port}")
     await trio.serve_tcp(handler, port)
 
 

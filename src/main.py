@@ -20,9 +20,9 @@ logger = logging.getLogger("main")
 def read_torrent_file(torrent_path):
     with open(torrent_path, "rb") as f:
         torrent_data: dict[bytes, Any] = cast(dict[bytes, Any], bencode.parse_value(f))
-        logger.debug("torrent_data = {}".format(torrent_data))
+        logger.debug(f"torrent_data = {torrent_data}")
     torrent_info = bencode.encode_value(torrent_data[b"info"])
-    logger.debug("torrent info = {!r}".format(torrent_info))
+    logger.debug(f"torrent info = {torrent_info!r}")
     # if True:
     #    with open(args.torrent_path, 'rb') as f:
     #        raw = f.read()
@@ -37,7 +37,7 @@ def run(log_level, torrent_path, listening_port, download_dir):
         log_level = getattr(logging, "WARNING")
     # TODO 2026-03-01: ideally the log location isn't tied to the download location
     # but this is better for testing than writing to /tmp in a container
-    logfile = "{}/{}.log".format(download_dir, listening_port)
+    logfile = f"{download_dir}/{listening_port}.log"
     logging.basicConfig(
         filename=logfile,
         level=log_level,
@@ -60,7 +60,7 @@ def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
     main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
     for i in range(int(number_of_files)):
-        fw = file_manager.FileWrapper(torrent=t, file_suffix=".{}".format(i))
+        fw = file_manager.FileWrapper(torrent=t, file_suffix=f".{i}")
         fw.create_file_or_return_hashes()
         files.append(fw)
     for p in t._pieces:
@@ -86,13 +86,13 @@ def test(test_dir, torrent_path, number_of_clients):
     # ----- RUN CLIENTS ----------------
     client_processes = []
     for i in range(number_of_clients):
-        client_dir = test_dir / "clients" / ("client-{}".format(i))
+        client_dir = test_dir / "clients" / f"client-{i}"
         client_dir.mkdir(exist_ok=True, parents=True)
 
         # TODO tidy up potential torrent_name, custom_name issues
         torrent_name = bytes.decode(torrent_data[b"info"][b"name"])
-        test_file = test_dir / "{}.{}.part".format(torrent_name, i)
-        tmp_file = client_dir / "{}.part".format(torrent_name)
+        test_file = test_dir / f"{torrent_name}.{i}.part"
+        tmp_file = client_dir / f"{torrent_name}.part"
         final_file = client_dir / torrent_name
 
         try:
@@ -115,9 +115,7 @@ def test(test_dir, torrent_path, number_of_clients):
     for p, _, _ in client_processes:
         p.terminate()
     print(
-        "{} clients finished, {} seconds (setup file copy took {} second)".format(
-            number_of_clients, end_time - torrent_start_time, torrent_start_time - start_time
-        )
+        f"{number_of_clients} clients finished, {end_time - torrent_start_time} seconds (setup file copy took {torrent_start_time - start_time} second)"
     )
 
 
