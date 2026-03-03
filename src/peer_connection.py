@@ -278,20 +278,14 @@ class PeerEngine(object):
             elif command == "block_to_upload":
                 assert isinstance(data, BlockForPeer)
                 raw_msg = bytes([peer_messages.PeerMsg.PIECE])
-                raw_msg += (data.index).to_bytes(4, byteorder="big")
-                raw_msg += (data.begin).to_bytes(4, byteorder="big")
+                raw_msg += (data.block.piece_index).to_bytes(4, byteorder="big")
+                raw_msg += (data.block.block_start).to_bytes(4, byteorder="big")
                 raw_msg += data.data
                 logger.debug(
-                    "Pre-send PIECE {} to {!r}".format(
-                        (data.index, data.begin, data.length), self._peer_id_and_state[0]
-                    )
+                    "Pre-send PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0])
                 )
                 await self._peer_stream.send_message(raw_msg)
-                logger.debug(
-                    "Sent PIECE {} to {!r}".format(
-                        (data.index, data.begin, data.length), self._peer_id_and_state[0]
-                    )
-                )
+                logger.debug("Sent PIECE {} to {!r}".format(data.block, self._peer_id_and_state[0]))
             elif command == "announce_have_piece":
                 raw_msg = bytes([peer_messages.PeerMsg.HAVE])
                 raw_msg += (data).to_bytes(4, byteorder="big")

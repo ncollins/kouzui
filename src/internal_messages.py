@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from utility_types import Block
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CompletePieceToWrite:
@@ -20,15 +22,11 @@ class WriteConfirmation:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class BlockToRead:
     peer_id: bytes
-    index: int
-    begin: int
-    length: int
+    block: Block
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class BlockForPeer:
     peer_id: bytes
-    index: int
-    begin: int
-    length: int
+    block: Block
     data: bytes

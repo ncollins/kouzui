@@ -347,9 +347,11 @@ class Engine(object):
                     await self._blocks_to_read.send(
                         BlockToRead(
                             peer_id=peer_state.peer_id,
-                            index=request_info[0],
-                            begin=request_info[1],
-                            length=request_info[2],
+                            block=Block(
+                                piece_index=request_info[0],
+                                block_start=request_info[1],
+                                block_length=request_info[2],
+                            ),
                         )
                     )
                 else:
@@ -447,7 +449,7 @@ class Engine(object):
             else:
                 logger.info(
                     "dropped block {} for {!r} because peer no longer exists".format(
-                        (msg.index, msg.begin, msg.length), msg.peer_id
+                        msg.block, msg.peer_id
                     )
                 )
 

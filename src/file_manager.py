@@ -114,13 +114,9 @@ class FileManager(object):
     async def block_reading_loop(self):
         while True:
             msg = await self._blocks_to_read.receive()
-            block = self._file_wrapper.read_block(msg.index, msg.begin, msg.length)
+            data = self._file_wrapper.read_block(
+                msg.block.piece_index, msg.block.block_start, msg.block.block_length
+            )
             await self._blocks_for_peers.send(
-                BlockForPeer(
-                    peer_id=msg.peer_id,
-                    index=msg.index,
-                    begin=msg.begin,
-                    length=msg.length,
-                    data=block,
-                )
+                BlockForPeer(peer_id=msg.peer_id, block=msg.block, data=data)
             )
