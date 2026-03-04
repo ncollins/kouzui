@@ -34,3 +34,6 @@ integration-test:
 
 unit-test:
 	uv run pytest .
+
+install:
+	uv tool install --python python3.11 .
