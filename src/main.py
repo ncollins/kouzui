@@ -5,7 +5,6 @@ import multiprocessing as mp
 from pathlib import Path
 import random
 import shutil
-import os
 import time
 from typing import Any, Optional, cast
 
@@ -87,7 +86,7 @@ def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
     start_time = time.perf_counter()
     torrent_data, _torrent_info = read_torrent_file(torrent_file)
     # ----- RUN CLIENTS ----------------
-    client_processes = []
+    client_processes: list[tuple[mp.Process, Path, Path]] = []
     for i in range(number_of_clients):
         client_dir = test_dir / "clients" / f"client-{i}"
         client_dir.mkdir(exist_ok=True, parents=True)
@@ -99,7 +98,7 @@ def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
         final_file = client_dir / torrent_name
 
         try:
-            os.remove(final_file)
+            final_file.unlink()
         except FileNotFoundError:
             pass
 
@@ -114,7 +113,7 @@ def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
     # Wait for clients to complete and shutdown
     # TODO 2026-03-03: this code checking that all the clients have completed could be
     # replaced by the auto_shutdown argument passed to engine.run
-    while not all(os.path.exists(final_location) for _, final_location, _ in client_processes):
+    while not all(final_location.exists() for _, final_location, _ in client_processes):
         time.sleep(1)
     end_time = time.perf_counter()
     for p, _, _ in client_processes:

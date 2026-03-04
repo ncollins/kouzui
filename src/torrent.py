@@ -1,6 +1,6 @@
 import hashlib
 import logging
-import os
+from pathlib import Path
 import random
 import re
 from typing import NamedTuple
@@ -31,7 +31,7 @@ logger = logging.getLogger("torrent")
 # 'length' and 'path' keys
 
 
-Piece = NamedTuple("Piece", [("filename", str), ("index", int), ("sha1hash", bytes)])
+PieceInfo = NamedTuple("PieceInfo", [("file", Path), ("index", int), ("sha1hash", bytes)])
 
 
 def _random_char() -> str:
@@ -76,7 +76,14 @@ class Torrent(object):
     fashion.
     """
 
-    def __init__(self, tdict, info_string, directory, listening_port=None, custom_name=None):
+    def __init__(
+        self,
+        tdict,
+        info_string,
+        directory: Path,
+        listening_port=None,
+        custom_name: str | None = None,
+    ):
         self._listening_port = listening_port
         self._info_string = info_string
         self._info_hash = hashlib.sha1(info_string).digest()
@@ -90,12 +97,12 @@ class Torrent(object):
             # store hash and a bolean to mark if we have the piece or not
             self._torrent_name = bytes.decode(tdict[b"info"][b"name"])
             if custom_name:
-                self._filename = os.path.join(directory, custom_name)
+                self._filename = directory / custom_name
             else:
-                self._filename = os.path.join(directory, self._torrent_name)
+                self._filename = directory / self._torrent_name
 
             self._pieces = [
-                Piece(self._filename, i, sha1)
+                PieceInfo(self._filename, i, sha1)
                 for i, sha1 in enumerate(_parse_pieces(tdict[b"info"][b"pieces"]))
             ]
 
@@ -181,7 +188,7 @@ class Torrent(object):
         # TODO this needs to update while we run
         return self._file_length
 
-    def piece_info(self, n: int) -> Piece:
+    def piece_info(self, n: int) -> PieceInfo:
         return self._pieces[n]
 
     def is_piece_complete(self, index):

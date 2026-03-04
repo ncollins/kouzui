@@ -1,7 +1,7 @@
 import hashlib
+import io
 import logging
-import os
-from typing import Any
+from pathlib import Path
 
 import trio
 
@@ -27,13 +27,13 @@ def _create_empty_file(path, torrent):
 class FileWrapper(object):
     def __init__(self, *, torrent: tstate.Torrent, file_suffix: str = "") -> None:
         self._torrent = torrent
-        self._tmp_path = torrent.file_path + file_suffix + ".part"
-        self._final_path = torrent.file_path + file_suffix
-        self._file_path = None
-        self._file: Any = None
+        self._tmp_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}.part"
+        self._final_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}"
+        self._file_path: Path | None = None
+        self._file: io.BufferedReader | io.BufferedRandom | None = None
 
     def create_file_or_return_hashes(self):
-        if os.path.exists(self._final_path):
+        if self._final_path.exists():
             self._file_path = self._final_path
             logger.info(f"data file exists at {self._file_path}")
         else:
@@ -61,21 +61,24 @@ class FileWrapper(object):
 
     def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length  # TODO
+        assert self._file is not None
         self._file.seek(start)
         self._file.write(piece)
         self._file.flush()
 
     def read_block(self, index: int, begin: int, length: int) -> bytes:
         start = index * self._torrent._piece_length + begin
+        assert self._file is not None
         self._file.seek(start)
         block = self._file.read(length)
         return block
 
     def move_file_to_final_location(self):
         assert self._file_path is not None
+        assert self._file is not None
         if self._file_path != self._final_path:
             self._file.close()
-            os.rename(self._file_path, self._final_path)
+            self._file_path.rename(self._final_path)
             logger.info(f"Moved {self._file_path} to {self._final_path}")
             self._file_path = self._final_path
             self._file = open(self._file_path, "rb+")
