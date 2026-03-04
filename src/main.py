@@ -1,13 +1,15 @@
-import argparse
+from collections import OrderedDict
 import hashlib
 import logging
 import multiprocessing as mp
-import pathlib
+from pathlib import Path
 import random
 import shutil
 import os
 import time
-from typing import Any, cast
+from typing import Any, Optional, cast
+
+import typer
 
 import bencode
 import engine
@@ -16,10 +18,14 @@ from torrent import Torrent
 
 logger = logging.getLogger("main")
 
+app = typer.Typer()
 
-def read_torrent_file(torrent_path):
-    with open(torrent_path, "rb") as f:
-        torrent_data: dict[bytes, Any] = cast(dict[bytes, Any], bencode.parse_value(f))
+
+def read_torrent_file(torrent_file: Path) -> tuple[OrderedDict[bytes, Any], bytes]:
+    with torrent_file.open("rb") as f:
+        torrent_data: OrderedDict[bytes, Any] = cast(
+            OrderedDict[bytes, Any], bencode.parse_value(f)
+        )
         logger.debug(f"torrent_data = {torrent_data}")
     torrent_info = bencode.encode_value(torrent_data[b"info"])
     logger.debug(f"torrent info = {torrent_info!r}")
@@ -30,8 +36,14 @@ def read_torrent_file(torrent_path):
     return (torrent_data, torrent_info)
 
 
-def run(log_level, torrent_path, listening_port, download_dir, auto_shutdown: bool):
-    if log_level:
+def run(
+    log_level: str | None,
+    torrent_file: Path,
+    listening_port: Optional[int],
+    download_dir: Optional[Path],
+    auto_shutdown: bool,
+):
+    if log_level is not None:
         log_level = getattr(logging, log_level.upper())
     else:
         log_level = getattr(logging, "WARNING")
@@ -43,29 +55,24 @@ def run(log_level, torrent_path, listening_port, download_dir, auto_shutdown: bo
         level=log_level,
         format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s",
     )
-    torrent_data, torrent_info = read_torrent_file(torrent_path)
-    download_dir = download_dir if download_dir else os.path.dirname(os.path.abspath(__file__))
+    torrent_data, torrent_info = read_torrent_file(torrent_file)
+    download_dir = download_dir if download_dir else Path.cwd()
     port = int(listening_port) if listening_port else None
     t = Torrent(torrent_data, torrent_info, download_dir, port)
     engine.run(t, auto_shutdown=auto_shutdown)
 
 
-def run_command(args):
-    run(
-        args.log_level,
-        args.torrent_path,
-        args.listening_port,
-        args.download_dir,
-        args.auto_shutdown,
-    )
-
-
-def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
+def make_test_files(
+    torrent_data: OrderedDict[bytes, Any],
+    torrent_info: bytes,
+    download_dir: Path,
+    number_of_files: int,
+):
     t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
     main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
-    for i in range(int(number_of_files)):
+    for i in range(number_of_files):
         fw = file_manager.FileWrapper(torrent=t, file_suffix=f".{i}")
         fw.create_file_or_return_hashes()
         files.append(fw)
@@ -75,20 +82,10 @@ def make_test_files(torrent_data, torrent_info, download_dir, number_of_files):
             random.choice(files).write_piece(p.index, data)
 
 
-def make_test_files_command(args):
-    torrent_data, torrent_info = read_torrent_file(args.torrent_path)
-    download_dir = (
-        args.download_dir if args.download_dir else os.path.dirname(os.path.abspath(__file__))
-    )
-    number_of_files = args.number_of_files
-    make_test_files(torrent_data, torrent_info, download_dir, number_of_files)
-
-
-def test(test_dir, torrent_path, number_of_clients):
-    test_dir = pathlib.Path(test_dir)
+def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
     # TODO separate timing of file copy and torrenting
     start_time = time.perf_counter()
-    torrent_data, torrent_info = read_torrent_file(torrent_path)
+    torrent_data, _torrent_info = read_torrent_file(torrent_file)
     # ----- RUN CLIENTS ----------------
     client_processes = []
     for i in range(number_of_clients):
@@ -108,7 +105,7 @@ def test(test_dir, torrent_path, number_of_clients):
 
         shutil.copy(test_file, tmp_file)
 
-        p = mp.Process(target=run, args=("INFO", torrent_path, 50000 + i, client_dir, False))
+        p = mp.Process(target=run, args=("INFO", torrent_file, 50000 + i, client_dir, False))
         client_processes.append((p, final_file, tmp_file))
 
     torrent_start_time = time.perf_counter()
@@ -127,47 +124,53 @@ def test(test_dir, torrent_path, number_of_clients):
     )
 
 
-def test_command(args):
-    test(args.test_dir, args.torrent_path, int(args.number_of_clients))
+@app.command("run")
+def run_command(
+    torrent_file: Path = typer.Argument(help="path to the .torrent file"),
+    listening_port: Optional[int] = typer.Option(
+        None, "--listening-port", help="listening port for incoming peer connections"
+    ),
+    log_level: Optional[str] = typer.Option(None, "--log-level", help="DEBUG/INFO/WARNING"),
+    download_dir: Optional[Path] = typer.Option(
+        None, "--download-dir", help="directory to save the file in"
+    ),
+    auto_shutdown: bool = typer.Option(
+        False, "--auto-shutdown", help="automatically shutdown if there are no peers downloading"
+    ),
+):
+    """Run Bittorrent client"""
+    run(log_level, torrent_file, listening_port, download_dir, auto_shutdown)
 
 
-def main():
-    argparser = argparse.ArgumentParser()
-    # run sub-command ----------------------
-    sub_commands = argparser.add_subparsers(help="sub-commands help")
-    run = sub_commands.add_parser("run", help="Run Bittorrent client")
-    run.add_argument("torrent_path", help="path to the .torrent file")
-    run.add_argument("--listening-port", help="listening port for incoming peer connections")
-    run.add_argument("--log-level", help="DEBUG/INFO/WARNING")
-    run.add_argument("--download-dir", help="directory to save the file in")
-    run.add_argument(
-        "--auto-shutdown",
-        action="store_true",
-        help="automatically shutdown if there are no peers downloading",
-    )
-    run.set_defaults(func=run_command)
-    # make-test-files sub-command ----------
-    make_test_files = sub_commands.add_parser(
-        "make-test-files", help="Split a complete file into incomplete files for testing"
-    )
-    make_test_files.add_argument("torrent_path", help="path to the .torrent file")
-    make_test_files.add_argument("--number-of-files", help="number of files to create")
-    make_test_files.add_argument(
-        "--download-dir", help="directory to find the complete file and save the incomplete files"
-    )
-    make_test_files.set_defaults(func=make_test_files_command)
-    # test-clients sub-command
-    test = sub_commands.add_parser(
-        "test-run", help="Run multiple clients in separate processes for testing"
-    )
-    test.add_argument("torrent_path", help="path to the .torrent file")
-    test.add_argument("--test-dir", help="number of clients")
-    test.add_argument("--number-of-clients", help="number of clients")
-    test.set_defaults(func=test_command)
-    # --------------------------------------
-    args = argparser.parse_args()
-    args.func(args)
+@app.command("make-test-files")
+def make_test_files_command(
+    torrent_file: Path = typer.Argument(help="path to the .torrent file"),
+    number_of_files: int = typer.Option(
+        None, "--number-of-files", help="number of files to create"
+    ),
+    download_dir: Optional[Path] = typer.Option(
+        None,
+        "--download-dir",
+        help="directory to find the complete file and save the incomplete files",
+    ),
+):
+    """Split a complete file into incomplete files for testing"""
+    torrent_data, torrent_info = read_torrent_file(torrent_file)
+    dl_dir = (
+        download_dir if download_dir else Path.cwd()
+    )  # os.path.dirname(os.path.abspath(__file__))
+    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files)
+
+
+@app.command("test-run")
+def test_run_command(
+    torrent_path: Path = typer.Argument(help="path to the .torrent file"),
+    test_dir: Path = typer.Option(None, "--test-dir", help="test directory"),
+    number_of_clients: int = typer.Option(..., "--number-of-clients", help="number of clients"),
+):
+    """Run multiple clients in separate processes for testing"""
+    test(test_dir, torrent_path, number_of_clients)
 
 
 if __name__ == "__main__":
-    main()
+    app()
