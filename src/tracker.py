@@ -1,5 +1,5 @@
 import logging
-from urllib import parse as urllib_parse  # hack to fix mypy warning
+from urllib import parse
 
 import h11
 import trio
@@ -20,7 +20,7 @@ def tracker_request(torrent: torrent.Torrent, event: bytes | None) -> h11.Reques
     the tracker about your client.
     """
     d = {
-        b"info_hash": urllib_parse.quote_from_bytes(torrent.info_hash).encode(),
+        b"info_hash": parse.quote_from_bytes(torrent.info_hash).encode(),
         b"peer_id": torrent.peer_id,
         # ip
         b"port": _int2bytes(torrent.listening_port),
