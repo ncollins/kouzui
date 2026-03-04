@@ -81,7 +81,7 @@ class Torrent(object):
         tdict,
         info_string,
         directory: Path,
-        listening_port=None,
+        listening_port: int | None = None,
         custom_name: str | None = None,
     ):
         self._listening_port = listening_port
@@ -119,9 +119,9 @@ class Torrent(object):
         m = r.fullmatch(self._raw_tracker_url.decode())
         if m is None:
             raise Exception(f"Unable to parse tracker URL: {self._raw_tracker_url.decode()}")
-        self._tracker_address = m["address"].encode()
-        self._tracker_port = int(m["port"])
-        self._tracker_path = m["path"].encode()
+        self._tracker_address: bytes = m["address"].encode()
+        self._tracker_port: int = int(m["port"])
+        self._tracker_path: bytes = m["path"].encode()
         logger.info(
             f"Tracker address: {self._tracker_address!r}, port: {self._tracker_port}, path: {self._tracker_path!r}"
         )
@@ -132,14 +132,14 @@ class Torrent(object):
         self._incomplete_peers = 0
 
     @property
-    def listening_port(self):
+    def listening_port(self) -> int:
         if self._listening_port:
             return self._listening_port
         else:
             return DEFAULT_LISTENING_PORT
 
     @property
-    def file_path(self):
+    def file_path(self) -> Path:
         return self._filename
 
     def piece_length(self, index: int) -> int:
@@ -150,15 +150,15 @@ class Torrent(object):
             return min(self._piece_length, self._file_length - self._piece_length * last_piece)
 
     @property
-    def info_hash(self):
+    def info_hash(self) -> bytes:
         return self._info_hash
 
     @property
-    def peer_id(self):
+    def peer_id(self) -> PeerId:
         return self._peer_id
 
     @property
-    def interval(self):
+    def interval(self) -> int:
         return self._interval
 
     @property
@@ -170,26 +170,26 @@ class Torrent(object):
         return self._tracker_port
 
     @property
-    def tracker_path(self):
+    def tracker_path(self) -> bytes:
         return self._tracker_path
 
     @property
-    def uploaded(self):
+    def uploaded(self) -> int:
         # TODO this needs to update while we run
         return 0
 
     @property
-    def downloaded(self):
+    def downloaded(self) -> int:
         # TODO this needs to update while we run
         return 0
 
     @property
-    def left(self):
+    def left(self) -> int:
         # TODO this needs to update while we run
         return self._file_length
 
     def piece_info(self, n: int) -> PieceInfo:
         return self._pieces[n]
 
-    def is_piece_complete(self, index):
-        return self._complete[index]
+    def __is_piece_complete(self, index: int) -> bool:
+        return bool(self._complete[index])

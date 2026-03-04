@@ -14,7 +14,7 @@ def _int2bytes(i: int) -> bytes:
     return b"%d" % i
 
 
-def tracker_request(torrent, event) -> h11.Request:
+def tracker_request(torrent: torrent.Torrent, event: bytes | None) -> h11.Request:
     """
     Tracker request is an http GET request, sent with parameters telling
     the tracker about your client.
@@ -41,7 +41,7 @@ def tracker_request(torrent, event) -> h11.Request:
     path = torrent.tracker_path + b"?" + params
     host = torrent.tracker_address + b":" + str(torrent.tracker_port).encode()
     headers = [
-        ("Host", host),
+        ("Host", host.decode("utf-8")),  # has to be tuple[bytes, bytes] or tuple[str, str]
         ("Accept-Encoding", "gzip;q=1.0, deflate, identity"),
         ("Accept", "*/*"),
         ("User-Agent", "toytorrent"),
@@ -50,7 +50,7 @@ def tracker_request(torrent, event) -> h11.Request:
     return r
 
 
-async def query(torrent: torrent.Torrent, event) -> bytes:
+async def query(torrent: torrent.Torrent, event: bytes | None) -> bytes:
     url: bytes = torrent.tracker_address
     port: int = torrent.tracker_port
     logger.debug(f"url/port = {url!r}/{port}")
@@ -64,5 +64,5 @@ async def query(torrent: torrent.Torrent, event) -> bytes:
     await h.send_event(tracker_request(torrent, event))
     await h.send_event(h11.EndOfMessage())
 
-    response, data = await h.receive_with_data()
+    _response, data = await h.receive_with_data()
     return b"".join(d.data for d in data if isinstance(d, h11.Data))
