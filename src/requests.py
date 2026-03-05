@@ -17,23 +17,23 @@ class RequestManager(object):
         self._requests: Set[tuple[PeerId, Block, datetime.datetime]] = set()
 
     @property
-    def size(self):
+    def size(self) -> int:
         return len(self._requests)
 
-    def add_request(self, peer_id: PeerId, block: Block):
+    def add_request(self, peer_id: PeerId, block: Block) -> None:
         self._requests.add((peer_id, block, datetime.datetime.now()))
 
-    def delete_all_for_piece(self, index: int):
+    def delete_all_for_piece(self, index: int) -> None:
         to_delete = set((p_id, r, t) for p_id, r, t in self._requests if r.piece_index == index)
         logger.info(f"Found {len(to_delete)} block requests to delete for piece index {index}")
         self._requests = set(
             (p_id, r, t) for p_id, r, t in self._requests if r.piece_index != index
         )
 
-    def delete_all_for_peer(self, peer_id: PeerId):
+    def delete_all_for_peer(self, peer_id: PeerId) -> None:
         self._requests = set((p_id, r, t) for p_id, r, t in self._requests if p_id != peer_id)
 
-    def delete_all(self):
+    def delete_all(self) -> None:
         self._requests = set()
 
     def delete_older_than(self, *, seconds: int) -> int:
