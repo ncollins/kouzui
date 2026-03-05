@@ -164,17 +164,15 @@ class PeerEngine(object):
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
         except Exception as e:
+            # TODO 2026-03-05: This exception handling and logging could be tidied up. In  particular, an Exception("EOF") when the
+            # peer closes the connection isn't really a problem. Currently the re-raised exception is caught at a later point and a WARNING
+            # message is logged, but it doesn't provide details.
             if peer_id is not None:
                 self._eng._peers.pop(peer_id)
-            logger.exception("Exception raised in PeerEngine")
-            logger.info(f"Closing PeerEngine {self._peer_address} / {peer_id!r}")
+            logger.exception(
+                f"Exception raised in PeerEngine, the PeerEngine will be closed ({self._peer_address} / {peer_id!r}) and the exception re-raised."
+            )
             raise e
-        except trio.MultiError:
-            if peer_id is not None:
-                self._eng._peers.pop(peer_id)
-            logger.exception("MultiError raised in PeerEngine")
-            logger.info(f"Closing PeerEngine {self._peer_address} / {peer_id!r}")
-            raise Exception("trio.MultiError was raised by PeerEngine")
 
     async def receive_handshake(self) -> PeerId:
         # First, receive handshake

@@ -26,7 +26,15 @@ class HttpStream:
                 raw_bytes = await self.stream.receive_some(STREAM_CHUNK_SIZE)
                 logger.debug(f'raw bytes = "{raw_bytes!r}"')
                 # if raw_bytes != b'':
-                self.conn.receive_data(raw_bytes)
+                match raw_bytes:
+                    case bytes():
+                        self.conn.receive_data(raw_bytes)
+                    case bytearray():
+                        # NOTE: I think .receive_data can actually handle a bytearray even though
+                        # its type signature says otherwise, so if we really wanted to
+                        # micro-optimize this code we could probably just uses a 'type: ignore'
+                        # comment or typing.cast()
+                        self.conn.receive_data(bytes(raw_bytes))
                 logger.debug("sent data to h11 connection")
             else:
                 return e
