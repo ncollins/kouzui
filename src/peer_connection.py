@@ -302,7 +302,7 @@ async def start_peer_engine(
     peer_engine = PeerEngine(
         eng, peer_address, None, stream, send_peer_msg_to_engine=eng.peer_messages
     )
-    await peer_engine.run(initiate=True)
+    await peer_engine.run(initiate=initiate)
 
 
 def make_handler(eng: engine.Engine) -> Callable[[trio.SocketStream], Awaitable[None]]:
