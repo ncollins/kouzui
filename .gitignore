@@ -111,3 +111,7 @@ integration_tests/test_data/
 
 # Ack
 .ackrc
+
+# VSCode
+
+.vscode
