@@ -25,17 +25,17 @@ class TokenBucket(object):
         self.updates_per_second = updates_per_second
 
     @property
-    def update_period(self):
+    def update_period(self) -> float:
         return 1.0 / self.updates_per_second
 
-    def check_and_decrement(self, packet_size):
+    def check_and_decrement(self, packet_size: int) -> bool:
         if self.bucket >= packet_size:
             self.bucket -= packet_size
             return True
         else:
             return False
 
-    async def loop(self):
+    async def loop(self) -> None:
         while True:
             await trio.sleep(self.update_period)
             increment = self.bytes_per_second / self.updates_per_second
