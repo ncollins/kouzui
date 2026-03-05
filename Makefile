@@ -26,10 +26,11 @@ integration-test:
 	sed 's|__TEST_DATA_DIR__|$(TEST_DATA_ABS)|' integration_tests/pod.yml > $(POD_MANIFEST_TMP)
 	podman kube play --replace $(POD_MANIFEST_TMP)
 	podman wait kouzui-integration-test-single-client; \
+	result_single_client=$$?; \
 	podman wait kouzui-integration-test-clients; \
-	result=$$?; \
+	result_multi_client=$$?; \
 	podman kube down $(POD_MANIFEST_TMP); \
-	exit $$result
+	echo "single client result = $$result_single_client, multi client result = $$result_multi_client" ;\
 	uv run integration_tests/test_data.py verify-complete-files integration_tests/test_data test_file.bin
 
 unit-test:

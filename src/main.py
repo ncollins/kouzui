@@ -118,9 +118,10 @@ def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
     end_time = time.perf_counter()
     for p, _, _ in client_processes:
         p.terminate()
-    print(
-        f"{number_of_clients} clients finished, {end_time - torrent_start_time} seconds (setup file copy took {torrent_start_time - start_time} second)"
-    )
+    final_message = f"{number_of_clients} clients finished, {end_time - torrent_start_time} seconds (setup file copy took {torrent_start_time - start_time} second)"
+    print(final_message)
+    with (test_dir / "clients" / "multi_client_shutdown_message.txt").open("w") as f:
+        f.writelines([final_message])
 
 
 @app.command("run")
