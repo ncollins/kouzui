@@ -27,6 +27,9 @@ dev = [
 python_version = 3.11
 ignore_missing_imports = true
 check_untyped_defs = true
+exclude = [
+    "^build/",
+]
 
 [tool.pytest.ini_options]
 addopts = [
