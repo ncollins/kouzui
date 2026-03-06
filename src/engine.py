@@ -1,4 +1,5 @@
 import collections
+from collections.abc import Iterable
 import hashlib
 import io
 import logging
@@ -232,7 +233,7 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 nursery.start_soon(peer_connection.make_standalone, self, address)
 
-    async def update_peers(self, peers: list[tuple[PeerAddress, PeerId | None]]) -> None:
+    async def update_peers(self, peers: Iterable[tuple[PeerAddress, PeerId | None]]) -> None:
         for address, peer_id in peers:
             if peer_id in self._peers:
                 logger.info(f"Peer already exists: {peer_id!r}")
