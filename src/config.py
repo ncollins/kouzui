@@ -1,18 +1,30 @@
-DEFAULT_LISTENING_PORT = 50881
+from dataclasses import dataclass
+from pathlib import Path
 
-STREAM_CHUNK_SIZE = 1024 * 8
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
-BLOCK_SIZE = 1024 * 8
 
-INTERNAL_QUEUE_SIZE = 100
+@dataclass(frozen=True, slots=True)
+class Config:
+    default_listening_port: int = 50881
+    stream_chunk_size: int = 1024 * 8
+    block_size: int = 1024 * 8
+    internal_queue_size: int = 100
+    max_outstanding_requests_per_peer: int = 30
+    keepalive_seconds: int = 115
+    num_unchoked_peers: int = 4
+    delete_stale_requests_seconds: int = 10 * 60
+    max_outgoing_bytes_per_second: int | None = 6 * 1024**2
 
-MAX_OUTSTANDING_REQUESTS_PER_PEER = 30
 
-KEEPALIVE_SECONDS = 115
+DEFAULT_CONFIG = Config()
 
-NUM_UNCHOKED_PEERS = 4
 
-DELETE_STALE_REQUESTS_SECONDS = 10 * 60
-
-MAX_OUTGOING_BYTES_PER_SECOND = 6 * 1024**2
-# MAX_OUTGOING_BYTES_PER_SECOND = None
+def load_config(path: Path) -> Config:
+    """Load a Config from a TOML file. Missing keys use defaults."""
+    with path.open("rb") as f:
+        data = tomllib.load(f)
+    return Config(**data)

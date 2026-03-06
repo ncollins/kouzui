@@ -14,7 +14,7 @@ from internal_messages import EngineMessage, HandshakeComplete, PeerConnectionCl
 from peer_messages import Choke, Have, Piece, PeerMessage, Request, Unchoke
 from shared_types import PeerAddress, PeerId
 
-from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS, INTERNAL_QUEUE_SIZE
+from config import Config, DEFAULT_CONFIG
 
 logger = logging.getLogger("peer")
 
@@ -29,17 +29,21 @@ class PeerStream(object):
     """
 
     def __init__(
-        self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None
+        self,
+        stream: trio.SocketStream,
+        token_bucket: token_bucket.TokenBucket | None = None,
+        config: Config = DEFAULT_CONFIG,
     ):
         self._stream: trio.SocketStream = stream
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
+        self._config = config
 
     async def receive_handshake(self) -> PeerId:
         logger.debug(f"Starting to received handshake on {self._stream}")
         data = None
         while len(self._msg_data) < 68:
-            data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+            data = await self._stream.receive_some(self._config.stream_chunk_size)
             if data == b"":
                 logger.debug(f"empty data in handshake, about to raise EOF from {self._stream}")
                 raise Exception("EOF in handshake")
@@ -75,7 +79,7 @@ class PeerStream(object):
             if messages:
                 return messages
             else:
-                data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+                data = await self._stream.receive_some(self._config.stream_chunk_size)
                 if data != b"":
                     logger.debug(f"received_message: Got {len(data)} from {self._stream}")
                 else:
@@ -130,13 +134,15 @@ class PeerEngine(object):
         stream: trio.SocketStream,
         send_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, EngineMessage]],
         tb: token_bucket.TokenBucket | None = None,
+        config: Config = DEFAULT_CONFIG,
     ):
         self._info_hash: bytes = info_hash
         self._our_peer_id: PeerId = our_peer_id
         self._peer_address: PeerAddress = peer_address
         self._expected_peer_id: PeerId | None = expected_peer_id
         self._peer_id: Optional[PeerId] = None
-        self._peer_stream: PeerStream = PeerStream(stream, tb)
+        self._peer_stream: PeerStream = PeerStream(stream, tb, config)
+        self._config = config
         self._send_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, EngineMessage]] = (
             send_msg_to_engine
         )
@@ -155,7 +161,7 @@ class PeerEngine(object):
 
             # Create outgoing channel pair and notify Engine
             send_to_peer, receive_from_engine = trio.open_memory_channel[PeerMessage](
-                INTERNAL_QUEUE_SIZE
+                self._config.internal_queue_size
             )
             await self._send_msg_to_engine.send(
                 (peer_id, HandshakeComplete(peer_id=peer_id, send_channel=send_to_peer))
@@ -224,7 +230,7 @@ class PeerEngine(object):
         while True:
             logging.debug("sending_loop")
             msg: PeerMessage | None = None
-            with trio.move_on_after(KEEPALIVE_SECONDS):
+            with trio.move_on_after(self._config.keepalive_seconds):
                 msg = await receive_from_engine.receive()
             match msg:
                 case None:
@@ -255,6 +261,7 @@ async def start_peer_engine(
         stream=stream,
         send_msg_to_engine=eng.peer_messages,
         tb=eng.token_bucket,
+        config=eng._config,
     )
     await peer_engine.run(initiate=initiate)
 

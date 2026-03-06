@@ -21,7 +21,7 @@ from token_bucket import TokenBucket
 import torrent as state
 import tracker
 
-import config
+from config import Config, DEFAULT_CONFIG
 from internal_messages import (
     AllPiecesWritten,
     BlockToRead,
@@ -99,14 +99,16 @@ class Engine(object):
         blocks_to_read: trio.MemorySendChannel[BlockToRead],
         blocks_for_peers: trio.MemoryReceiveChannel[Piece],
         auto_shutdown: bool = False,
+        config: Config = DEFAULT_CONFIG,
     ) -> None:
         self._auto_shutdown: bool = auto_shutdown
+        self._config = config
         self._state: state.Torrent = torrent
         # interact with self
         self._peers_without_connection: tuple[
             trio.MemorySendChannel[PeerAddress],
             trio.MemoryReceiveChannel[PeerAddress],
-        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        ] = trio.open_memory_channel(config.internal_queue_size)
         # interact with FileManager
         self._complete_pieces_to_write: trio.MemorySendChannel[
             CompletePieceToWrite | AllPiecesWritten
@@ -120,7 +122,7 @@ class Engine(object):
         self._msg_from_peer: tuple[
             trio.MemorySendChannel[tuple[PeerId, EngineMessage]],
             trio.MemoryReceiveChannel[tuple[PeerId, EngineMessage]],
-        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        ] = trio.open_memory_channel(config.internal_queue_size)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
         # data received but not written to disk
@@ -128,10 +130,10 @@ class Engine(object):
         self.requests = requests.RequestManager()
         self._stats: dict[StatField, int] = {f: 0 for f in StatField}
 
-        if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
+        if config.max_outgoing_bytes_per_second is None:
             self.token_bucket: TokenBucket | None = None
         else:
-            self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
+            self.token_bucket = TokenBucket(config.max_outgoing_bytes_per_second)
 
     def _inc_stats(self, field: StatField) -> None:
         self._stats[field] += 1
@@ -153,7 +155,7 @@ class Engine(object):
             nursery.start_soon(self.info_loop)
             nursery.start_soon(self.choking_loop)
             nursery.start_soon(
-                self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS
+                self.delete_stale_requests_loop, self._config.delete_stale_requests_seconds
             )
             if self.token_bucket is not None:
                 nursery.start_soon(self.token_bucket.loop)
@@ -256,7 +258,7 @@ class Engine(object):
 
     def _blocks_from_index(self, index: int) -> set[Block]:
         piece_length = self._state.piece_length(index)
-        block_length = min(piece_length, config.BLOCK_SIZE)
+        block_length = min(piece_length, self._config.block_size)
         begin_indexes = list(range(0, piece_length, block_length))
         return set(
             Block(
@@ -287,7 +289,7 @@ class Engine(object):
                     f"{address!r}: self any? {self._state._complete.any()}, peer any? {peer._pieces.any()}, target_index = {target_index}"
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
-                if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
+                if len(existing_requests) > self._config.max_outstanding_requests_per_peer:
                     logger.info(
                         f"{address!r}: Not making new requests: {len(existing_requests)} existing"
                     )
@@ -392,14 +394,14 @@ class Engine(object):
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
             piece_length = self._state.piece_length(index)
-            completed_blocks = bitarray.bitarray(math.ceil(piece_length / config.BLOCK_SIZE))
+            completed_blocks = bitarray.bitarray(math.ceil(piece_length / self._config.block_size))
             completed_blocks.setall(False)
             piece_data = bytearray(piece_length)
             self._received_blocks[index] = (completed_blocks, piece_data)
         else:
             completed_blocks = self._received_blocks[index][0]
             piece_data = self._received_blocks[index][1]
-        block_index = begin // config.BLOCK_SIZE
+        block_index = begin // self._config.block_size
         completed_blocks[block_index] = True
         piece_data[begin : begin + len(data)] = data
         if completed_blocks.all():
@@ -477,8 +479,8 @@ class Engine(object):
             logger.info(f"Peers ordered by successful downloads in last 20 seconds: {peers}")
             # First X are unchoked
             # Rest are choked
-            unchoke = set(p[0] for p in peers[: config.NUM_UNCHOKED_PEERS])
-            choke = set(p[0] for p in peers[config.NUM_UNCHOKED_PEERS :])
+            unchoke = set(p[0] for p in peers[: self._config.num_unchoked_peers])
+            choke = set(p[0] for p in peers[self._config.num_unchoked_peers :])
             if optimistic_unchoke:
                 unchoke.add(optimistic_unchoke)
                 choke.discard(optimistic_unchoke)
@@ -506,7 +508,7 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
+def run(torrent: state.Torrent, *, auto_shutdown: bool, config: Config = DEFAULT_CONFIG) -> None:
     try:
         # create FileManager and check hashes if file already exists
         file_wrapper = file_manager.FileWrapper(torrent=torrent)
@@ -520,15 +522,15 @@ def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
 
         s_complete_pieces, r_complete_pieces = trio.open_memory_channel[
             CompletePieceToWrite | AllPiecesWritten
-        ](config.INTERNAL_QUEUE_SIZE)
+        ](config.internal_queue_size)
         s_write_confirmations, r_write_confirmations = trio.open_memory_channel[WriteConfirmation](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
         s_blocks_to_read, r_blocks_to_read = trio.open_memory_channel[BlockToRead](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
         s_blocks_for_peers, r_blocks_for_peers = trio.open_memory_channel[Piece](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
 
         file_engine = file_manager.FileManager(
@@ -546,6 +548,7 @@ def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
             blocks_to_read=s_blocks_to_read,
             blocks_for_peers=r_blocks_for_peers,
             auto_shutdown=auto_shutdown,
+            config=config,
         )
 
         async def run() -> None:
