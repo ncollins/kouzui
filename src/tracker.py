@@ -50,7 +50,9 @@ def tracker_request(torrent: torrent.Torrent, event: bytes | None) -> h11.Reques
     return r
 
 
-async def query(torrent: torrent.Torrent, event: bytes | None) -> bytes:
+async def query(
+    torrent: torrent.Torrent, event: bytes | None, stream_chunk_size: int = 1024 * 8
+) -> bytes:
     url: bytes = torrent.tracker_address
     port: int = torrent.tracker_port
     logger.debug(f"url/port = {url!r}/{port}")
@@ -58,7 +60,7 @@ async def query(torrent: torrent.Torrent, event: bytes | None) -> bytes:
         url.decode("ascii"), port
     )  # TODO fix hack with string/bytes issue
     logger.debug("Opened raw stream")
-    h = http_stream.HttpStream(stream, h11.CLIENT)
+    h = http_stream.HttpStream(stream, h11.CLIENT, stream_chunk_size=stream_chunk_size)
     logger.debug("Created HttpStream")
 
     await h.send_event(tracker_request(torrent, event))
