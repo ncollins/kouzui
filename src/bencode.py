@@ -86,26 +86,6 @@ def parse_value(s: BinaryIO) -> int | bytes | list[Any] | dict[bytes, Any] | Non
         raise Exception(f"Expected a digit, 'i', 'l', or 'd'. Got {c!r}")
 
 
-# def parse(s):
-#    stream = io.StringIO(s)
-#    return parse_value(stream)
-
-# print(parse('l8:abcdefgh4:spamdi10e11:abcdefghijke'))
-
-# def extract_info(s):
-#    c = s.read(1)
-#    if c != b'd':
-#        raise Exception("Need a dictionary to get 'info' string")
-#    d = dict()
-#    while True:
-#        k = parse_value(s)
-#        if k == b'info':
-#            return parse_value(s)
-#        else:
-#            _ = parse_value(s)
-#    raise Exception("No 'info' key found")
-
-
 def encode_bytes(s: bytes) -> bytes:
     return b"%d:%s" % (len(s), s)
 
