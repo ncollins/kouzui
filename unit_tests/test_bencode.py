@@ -5,7 +5,7 @@ from bencode import parse_compact_peers, parse_peers
 from shared_types import PeerAddress
 
 
-def test_parse_compact_peers():
+def test_parse_compact_peers() -> None:
     ip_addresses_and_ports = [
         ((192, 168, 1, 3), 50000),
         ((192, 168, 1, 4), 50001),
@@ -23,7 +23,7 @@ def test_parse_compact_peers():
     assert expected == parse_compact_peers(raw_bytes)
 
 
-def test_parse_peers():
+def test_parse_peers() -> None:
     torrent = MagicMock()
     torrent.listening_port = 60000
     input = [

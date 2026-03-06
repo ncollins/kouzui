@@ -46,7 +46,7 @@ NUM_CLIENTS = 4  # keep in sync with compose.yml / pod.yml
 # Keys are written in insertion order; the engine's bencode.encode_dict also
 # preserves insertion order, so the info_hash round-trips correctly.
 # ---------------------------------------------------------------------------
-def _bencode(v):
+def _bencode(v: bytes | str | int | list | dict) -> bytes:
     if isinstance(v, bytes):
         return b"%d:%s" % (len(v), v)
     if isinstance(v, str):
@@ -72,7 +72,7 @@ def create_incomplete_files(
         ..., help="File name used inside the torrent (e.g. test_file.bin)"
     ),
     tracker_url: str = typer.Argument(..., help="Announce URL written into the .torrent file"),
-):
+) -> None:
     """Generate source file, .torrent, and per-client partial files."""
     test_dir.mkdir(parents=True, exist_ok=True)
 
@@ -134,7 +134,7 @@ def verify_complete_files(
     torrent_name: str = typer.Argument(
         ..., help="File name used inside the torrent (e.g. test_file.bin)"
     ),
-):
+) -> None:
     """Verify each client downloaded a complete, correct copy of the file."""
     reference = test_dir / torrent_name
     if not reference.exists():
