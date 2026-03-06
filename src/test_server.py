@@ -8,7 +8,7 @@ import trio
 import http_stream
 
 
-async def handler(stream):
+async def handler(stream: trio.SocketStream) -> None:
     h = http_stream.HttpStream(stream, h11.SERVER)
 
     # valid events are:
@@ -32,12 +32,12 @@ async def handler(stream):
     await h.close()
 
 
-async def run_server(port):
+async def run_server(port: int) -> None:
     print(f"Start server on port {port}")
     await trio.serve_tcp(handler, port)
 
 
-async def run_servers():
+async def run_servers() -> None:
     async with trio.open_nursery() as nursery:
         nursery.start_soon(run_server, 8181)
         nursery.start_soon(run_server, 8182)

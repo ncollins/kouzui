@@ -46,7 +46,7 @@ def parse_request_or_cancel(s: bytes) -> Block:
     )
 
 
-def parse_piece(s):
+def parse_piece(s: bytes) -> tuple[int, int, bytes]:
     index = int.from_bytes(s[:4], byteorder="big")
     begin = int.from_bytes(s[4:8], byteorder="big")
     data = s[8:]

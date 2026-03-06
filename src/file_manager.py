@@ -17,7 +17,7 @@ from peer_messages import Piece
 logger = logging.getLogger("file_manager")
 
 
-def _create_empty_file(path, torrent):
+def _create_empty_file(path: Path, torrent: tstate.Torrent) -> None:
     with open(path, "wb") as f:
         for i in range(torrent._num_pieces):  # TODO remove private property access
             b = bytes(torrent.piece_length(i))
@@ -32,7 +32,7 @@ class FileWrapper(object):
         self._file_path: Path | None = None
         self._file: io.BufferedReader | io.BufferedRandom | None = None
 
-    def create_file_or_return_hashes(self):
+    def create_file_or_return_hashes(self) -> list[bytes] | None:
         if self._final_path.exists():
             self._file_path = self._final_path
             logger.info(f"data file exists at {self._file_path}")
@@ -73,7 +73,7 @@ class FileWrapper(object):
         block = self._file.read(length)
         return block
 
-    def move_file_to_final_location(self):
+    def move_file_to_final_location(self) -> None:
         assert self._file_path is not None
         assert self._file is not None
         if self._file_path != self._final_path:
@@ -103,12 +103,12 @@ class FileManager(object):
     # async def move_file_to_final_location(self):
     #    self._file_wrapper.move_file_to_final_location()
 
-    async def run(self):
+    async def run(self) -> None:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self.piece_writing_loop)
             nursery.start_soon(self.block_reading_loop)
 
-    async def piece_writing_loop(self):
+    async def piece_writing_loop(self) -> None:
         while True:
             msg = await self._pieces_to_write.receive()
             if isinstance(msg, AllPiecesWritten):
@@ -118,7 +118,7 @@ class FileManager(object):
                 logger.info(f"Wrote #{msg.index} to disk")
                 await self._write_confirmations.send(WriteConfirmation(index=msg.index))
 
-    async def block_reading_loop(self):
+    async def block_reading_loop(self) -> None:
         while True:
             msg = await self._blocks_to_read.receive()
             data = self._file_wrapper.read_block(

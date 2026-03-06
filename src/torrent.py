@@ -3,7 +3,8 @@ import logging
 from pathlib import Path
 import random
 import re
-from typing import NamedTuple
+from collections import OrderedDict
+from typing import Any, NamedTuple
 
 from shared_types import PeerId
 
@@ -78,12 +79,12 @@ class Torrent(object):
 
     def __init__(
         self,
-        tdict,
-        info_string,
+        tdict: OrderedDict[bytes, Any],
+        info_string: bytes,
         directory: Path,
         listening_port: int | None = None,
         custom_name: str | None = None,
-    ):
+    ) -> None:
         self._listening_port = listening_port
         self._info_string = info_string
         self._info_hash = hashlib.sha1(info_string).digest()

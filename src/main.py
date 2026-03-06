@@ -41,7 +41,7 @@ def run(
     listening_port: Optional[int],
     download_dir: Optional[Path],
     auto_shutdown: bool,
-):
+) -> None:
     if log_level is not None:
         log_level = getattr(logging, log_level.upper())
     else:
@@ -66,7 +66,7 @@ def make_test_files(
     torrent_info: bytes,
     download_dir: Path,
     number_of_files: int,
-):
+) -> None:
     t = Torrent(torrent_data, torrent_info, download_dir, None)
     files = []
     main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
@@ -81,7 +81,7 @@ def make_test_files(
             random.choice(files).write_piece(p.index, data)
 
 
-def test(test_dir: Path, torrent_file: Path, number_of_clients: int):
+def test(test_dir: Path, torrent_file: Path, number_of_clients: int) -> None:
     # TODO separate timing of file copy and torrenting
     start_time = time.perf_counter()
     torrent_data, _torrent_info = read_torrent_file(torrent_file)
@@ -137,7 +137,7 @@ def run_command(
     auto_shutdown: bool = typer.Option(
         False, "--auto-shutdown", help="automatically shutdown if there are no peers downloading"
     ),
-):
+) -> None:
     """Run Bittorrent client"""
     run(log_level, torrent_file, listening_port, download_dir, auto_shutdown)
 
@@ -153,7 +153,7 @@ def make_test_files_command(
         "--download-dir",
         help="directory to find the complete file and save the incomplete files",
     ),
-):
+) -> None:
     """Split a complete file into incomplete files for testing"""
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     dl_dir = (
@@ -167,12 +167,12 @@ def test_run_command(
     torrent_path: Path = typer.Argument(help="path to the .torrent file"),
     test_dir: Path = typer.Option(None, "--test-dir", help="test directory"),
     number_of_clients: int = typer.Option(..., "--number-of-clients", help="number of clients"),
-):
+) -> None:
     """Run multiple clients in separate processes for testing"""
     test(test_dir, torrent_path, number_of_clients)
 
 
-def main():
+def main() -> None:
     app()
 
 

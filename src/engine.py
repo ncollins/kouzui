@@ -465,7 +465,7 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent, *, auto_shutdown: bool):
+def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
     try:
         # create FileManager and check hashes if file already exists
         file_wrapper = file_manager.FileWrapper(torrent=torrent)
@@ -507,7 +507,7 @@ def run(torrent, *, auto_shutdown: bool):
             auto_shutdown=auto_shutdown,
         )
 
-        async def run():
+        async def run() -> None:
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(file_engine.run)
                 nursery.start_soon(eng.run)

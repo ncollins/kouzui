@@ -1,6 +1,16 @@
+from __future__ import annotations
+
 import math
 import os
 import shutil
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    import bitarray
+    from peer_state import PeerState
+    from shared_types import PeerId
+    from torrent import Torrent
 
 CGREEN = "\33[32m"
 CBLUE = "\33[34m"
@@ -9,7 +19,7 @@ CWHITE = "\33[37m"
 CEND = "\033[0m"
 
 
-def display_piece(count, display_block):
+def display_piece(count: int, display_block: int) -> str:
     if os.name == "windows":
         if count == display_block:
             return "X"
@@ -38,7 +48,13 @@ def display_piece(count, display_block):
 MAX_TEXT_LENGTH = 35
 
 
-def pretty_print(width, p_id, pieces, received_from, sent_to):
+def pretty_print(
+    width: int,
+    p_id: PeerId,
+    pieces: bitarray.bitarray,
+    received_from: int | None,
+    sent_to: int | None,
+) -> None:
     lines = [
         p_id.decode("ascii"),
         f"Complete      : {math.floor(sum(pieces) / len(pieces) * 100)}%",
@@ -66,7 +82,7 @@ def pretty_print(width, p_id, pieces, received_from, sent_to):
         print(line)
 
 
-def print_peers(torrent, peers):
+def print_peers(torrent: Torrent, peers: dict[PeerId, PeerState]) -> None:
     terminal_info = shutil.get_terminal_size()
     width = terminal_info.columns
     print(chr(27) + "[2J")

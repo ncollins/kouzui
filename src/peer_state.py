@@ -40,14 +40,14 @@ class PeerState(object):
         self._prev_10_second_download_count = 0
         self._total_upload_count = 0
 
-    def choke_us(self):
+    def choke_us(self) -> None:
         self._choked_us = True
 
-    def unchoke_us(self):
+    def unchoke_us(self) -> None:
         self._choked_us = False
 
     @property
-    def is_client_choked(self):
+    def is_client_choked(self) -> bool:
         return self._choked_us
 
     def choke_them(self) -> ChokeAlert:
@@ -65,24 +65,24 @@ class PeerState(object):
             return ChokeAlert.ALERT
 
     @property
-    def is_peer_choked(self):
+    def is_peer_choked(self) -> bool:
         return self._choked_them
 
-    def get_pieces(self):
+    def get_pieces(self) -> bitarray.bitarray:
         return self._pieces
 
-    def set_pieces(self, new_pieces):
+    def set_pieces(self, new_pieces: bitarray.bitarray) -> None:
         # crop the new pieces because peers send data
         # in complete bytes
         length = len(self._pieces)
         self._pieces = new_pieces[:length]
 
     @property
-    def first_seen(self):
+    def first_seen(self) -> datetime.datetime:
         return self._first_seen
 
     @property
-    def last_seen(self):
+    def last_seen(self) -> datetime.datetime:
         return self._last_seen
 
     @property

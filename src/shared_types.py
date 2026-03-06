@@ -16,7 +16,7 @@ class PeerAddress:
     ip: bytes
     port: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.ip, bytes) or not isinstance(self.port, int):
             raise ValueError(
                 f"Incorrect types when initializing PeerAddress: ip={self.ip!r} should be bytes and port={self.port} should be int"

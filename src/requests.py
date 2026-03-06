@@ -13,7 +13,7 @@ class RequestManager(object):
     and block.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._requests: Set[tuple[PeerId, Block, datetime.datetime]] = set()
 
     @property
