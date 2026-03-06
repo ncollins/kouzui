@@ -18,7 +18,7 @@ logger = logging.getLogger("file_manager")
 
 
 def _create_empty_file(path: Path, torrent: tstate.Torrent) -> None:
-    with open(path, "wb") as f:
+    with path.open("wb") as f:
         for i in range(torrent._num_pieces):  # TODO remove private property access
             b = bytes(torrent.piece_length(i))
             f.write(b)
@@ -30,7 +30,7 @@ class FileWrapper(object):
         self._tmp_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}.part"
         self._final_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}"
         self._file_path: Path | None = None
-        self._file: io.BufferedReader | io.BufferedRandom | None = None
+        self._file_handle: io.BufferedReader | io.BufferedRandom | None = None
 
     def create_file_or_return_hashes(self) -> list[bytes] | None:
         if self._final_path.exists():
@@ -43,45 +43,45 @@ class FileWrapper(object):
         assert self._file_path is not None
 
         try:
-            self._file = open(self._file_path, "rb")
+            self._file_handle = self._file_path.open("rb")
             hashes = []
             for i, _ in enumerate(self._torrent._complete):
                 piece_length = self._torrent.piece_length(i)
                 p = self.read_block(i, 0, piece_length)
                 h = hashlib.sha1(p).digest()
                 hashes.append(h)
-            self._file.close()
+            self._file_handle.close()
             logger.info("found file and calculated existing hashes")
         except FileNotFoundError:
             _create_empty_file(self._file_path, self._torrent)  # TODO don't read private property
             logger.info(f"created empty file at {self._file_path}")
             hashes = None
-        self._file = open(self._file_path, "rb+")
+        self._file_handle = open(self._file_path, "rb+")
         return hashes
 
     def write_piece(self, index: int, piece: bytes) -> None:
         start = index * self._torrent._piece_length  # TODO
-        assert self._file is not None
-        self._file.seek(start)
-        self._file.write(piece)
-        self._file.flush()
+        assert self._file_handle is not None
+        self._file_handle.seek(start)
+        self._file_handle.write(piece)
+        self._file_handle.flush()
 
     def read_block(self, index: int, begin: int, length: int) -> bytes:
         start = index * self._torrent._piece_length + begin
-        assert self._file is not None
-        self._file.seek(start)
-        block = self._file.read(length)
+        assert self._file_handle is not None
+        self._file_handle.seek(start)
+        block = self._file_handle.read(length)
         return block
 
     def move_file_to_final_location(self) -> None:
         assert self._file_path is not None
-        assert self._file is not None
+        assert self._file_handle is not None
         if self._file_path != self._final_path:
-            self._file.close()
+            self._file_handle.close()
             self._file_path.rename(self._final_path)
             logger.info(f"Moved {self._file_path} to {self._final_path}")
             self._file_path = self._final_path
-            self._file = open(self._file_path, "rb+")
+            self._file_handle = self._file_path.open("rb+")
 
 
 class FileManager(object):
