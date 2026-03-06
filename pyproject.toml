@@ -17,7 +17,9 @@ kouzui = "main:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.151.9",
     "mypy>=1.19.1",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.4",
     "ty>=0.0.19",
 ]
