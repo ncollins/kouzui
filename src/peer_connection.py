@@ -8,13 +8,13 @@ import trio
 
 if TYPE_CHECKING:
     import engine
-    import token_bucket
-    import torrent
 import peer_messages
+from internal_messages import EngineMessage, HandshakeComplete, PeerConnectionClosed, PeerMsg
 from peer_messages import PeerMessage
 from shared_types import PeerAddress, PeerId
+from token_bucket import TokenBucket
 
-from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
+from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS, INTERNAL_QUEUE_SIZE
 
 logger = logging.getLogger("peer")
 
@@ -28,9 +28,7 @@ class PeerStream(object):
     until it has enough.
     """
 
-    def __init__(
-        self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None
-    ):
+    def __init__(self, stream: trio.SocketStream, token_bucket: TokenBucket | None = None):
         self._stream: trio.SocketStream = stream
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
@@ -116,28 +114,29 @@ class HandshakeError(Exception):
 
 class PeerEngine(object):
     """
-    PeerEngine is initialized with a stream and two queues.
+    PeerEngine manages a single peer connection. It is initialized with the
+    connection stream and the information needed to communicate with the Engine.
     """
 
     def __init__(
         self,
-        eng: engine.Engine,
         peer_address: PeerAddress,
         expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
         *,
-        send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerMessage]],
+        info_hash: bytes,
+        own_peer_id: PeerId,
+        token_bucket: TokenBucket | None,
+        send_to_engine: trio.MemorySendChannel[EngineMessage],
     ):
-        self._tstate: torrent.Torrent = eng._state
-        self._eng: engine.Engine = eng
         self._peer_address: PeerAddress = peer_address
         self._expected_peer_id: PeerId | None = expected_peer_id
+        self._info_hash: bytes = info_hash
+        self._own_peer_id: PeerId = own_peer_id
+        self._peer_stream: PeerStream = PeerStream(stream, token_bucket)
+        self._send_to_engine: trio.MemorySendChannel[EngineMessage] = send_to_engine
         self._peer_id: Optional[PeerId] = None
-        self._peer_stream: PeerStream = PeerStream(stream, eng.token_bucket)
-        self._send_peer_msg_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerMessage]] = (
-            send_peer_msg_to_engine
-        )
-        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
+        self._receive_from_engine: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
     async def run(self, initiate: bool = True) -> None:
         peer_id = None
@@ -149,18 +148,17 @@ class PeerEngine(object):
             else:
                 peer_id = await self.receive_handshake()
                 await self.send_handshake()
-            if peer_id in self._eng._peers:
-                # We already have peer, close connection
-                raise Exception("peer already exists")
-            else:
-                import peer_state as ps_module
 
-                peer_s = ps_module.PeerState(
-                    peer_id, self._tstate._num_pieces
-                )  # TODO don't use private property
-                self._eng._peers[peer_id] = peer_s
-                self._peer_id = peer_id
-                self._receive_outgoing_data = peer_s.receive_outgoing_data
+            # Create the outgoing channel; Engine holds the send end, we hold the receive end
+            send_to_peer, receive_from_engine = trio.open_memory_channel[PeerMessage](
+                INTERNAL_QUEUE_SIZE
+            )
+            await self._send_to_engine.send(
+                HandshakeComplete(peer_id=peer_id, send_channel=send_to_peer)
+            )
+            self._peer_id = peer_id
+            self._receive_from_engine = receive_from_engine
+
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.receiving_loop)
                 nursery.start_soon(self.sending_loop)
@@ -169,7 +167,7 @@ class PeerEngine(object):
             # peer closes the connection isn't really a problem. Currently the re-raised exception is caught at a later point and a WARNING
             # message is logged, but it doesn't provide details.
             if peer_id is not None:
-                self._eng._peers.pop(peer_id)
+                await self._send_to_engine.send(PeerConnectionClosed(peer_id=peer_id))
             logger.exception(
                 f"Exception raised in PeerEngine, the PeerEngine will be closed ({self._peer_address} / {peer_id!r}) and the exception re-raised."
             )
@@ -188,7 +186,7 @@ class PeerEngine(object):
         peer_id = data[20 + 8 + 20 : 20 + 8 + 20 + 20]
         if not (header == b"\x13BitTorrent protocol"):
             raise HandshakeError("Handshake data: wrong header", header)
-        if not (sha1hash == self._tstate.info_hash):
+        if not (sha1hash == self._info_hash):
             raise HandshakeError("Handshake data: wrong hash", sha1hash)
         if self._expected_peer_id:
             if not self._expected_peer_id == peer_id:
@@ -197,8 +195,7 @@ class PeerEngine(object):
         return peer_id
 
     async def send_handshake(self) -> None:
-        # Handshake
-        await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
+        await self._peer_stream.send_handshake(self._info_hash, self._own_peer_id)
         logger.debug(f"Sent handshake to {self._peer_address}")
 
     async def receiving_loop(self) -> None:
@@ -214,23 +211,16 @@ class PeerEngine(object):
                 else:
                     msg = peer_messages.parse_message(data, self._peer_id)
                     logger.debug("Putting message in queue for engine")
-                    await self._send_peer_msg_to_engine.send((self._peer_id, msg))
-
-    async def send_bitfield(self) -> None:
-        raw_pieces = self._tstate._complete  # TODO don't use private property
-        await self._peer_stream.send_message(peer_messages.Bitfield(bitfield=raw_pieces).to_bytes())
+                    await self._send_to_engine.send(PeerMsg(peer_id=self._peer_id, msg=msg))
 
     async def sending_loop(self) -> None:
         assert self._peer_id is not None
-        assert self._receive_outgoing_data is not None
-        logger.debug(f"About to send bitfield to {self._peer_id!r}")
-        await self.send_bitfield()
-        logger.debug(f"Sent bitfield to {self._peer_id!r}")
+        assert self._receive_from_engine is not None
         while True:
             logging.debug("sending_loop")
             msg: PeerMessage | None = None
             with trio.move_on_after(KEEPALIVE_SECONDS):
-                msg = await self._receive_outgoing_data.receive()
+                msg = await self._receive_from_engine.receive()
             if msg is None:
                 logger.debug(f"Pre-send KEEPALIVE to {self._peer_id!r}")
                 await self._peer_stream.send_keepalive()
@@ -248,10 +238,16 @@ async def start_peer_engine(
     initiate: bool = True,
 ) -> None:
     """
-    Find (or create) queues for relevant stream, and create PeerEngine.
+    Create a PeerEngine with the necessary parameters extracted from the Engine.
     """
     peer_engine = PeerEngine(
-        eng, peer_address, None, stream, send_peer_msg_to_engine=eng.peer_messages
+        peer_address=peer_address,
+        expected_peer_id=None,
+        stream=stream,
+        info_hash=eng._state.info_hash,
+        own_peer_id=eng._state.peer_id,
+        token_bucket=eng.token_bucket,
+        send_to_engine=eng.peer_messages,
     )
     await peer_engine.run(initiate=initiate)
 

@@ -26,6 +26,10 @@ from internal_messages import (
     AllPiecesWritten,
     BlockToRead,
     CompletePieceToWrite,
+    EngineMessage,
+    HandshakeComplete,
+    PeerConnectionClosed,
+    PeerMsg,
     WriteConfirmation,
 )
 from peer_messages import (
@@ -115,8 +119,8 @@ class Engine(object):
         self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[PeerId, PeerMessage]],
-            trio.MemoryReceiveChannel[tuple[PeerId, PeerMessage]],
+            trio.MemorySendChannel[EngineMessage],
+            trio.MemoryReceiveChannel[EngineMessage],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
@@ -135,7 +139,7 @@ class Engine(object):
         logger.debug(f"stats updated: {self._stats}")
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, PeerMessage]]:
+    def peer_messages(self) -> trio.MemorySendChannel[EngineMessage]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -383,13 +387,35 @@ class Engine(object):
                 self.requests.delete_all_for_piece(index)
                 logger.warning(f"sha1hash does not match for index {index}")
 
+    async def handle_handshake_complete(
+        self,
+        peer_id: PeerId,
+        send_channel: trio.MemorySendChannel[PeerMessage],
+    ) -> None:
+        if peer_id in self._peers:
+            logger.warning(f"Duplicate peer {peer_id!r}, closing new connection")
+            await send_channel.aclose()
+            return
+        ps = peer_state.PeerState(peer_id, self._state._num_pieces, send_channel)
+        self._peers[peer_id] = ps
+        # Send bitfield so the peer knows what pieces we have
+        await ps.send_outgoing_data.send(Bitfield(bitfield=self._state._complete.copy()))
+
     async def peer_messages_loop(self) -> None:
         while True:
             logger.debug("peer_messages_loop")
-            peer_id, msg = await self._msg_from_peer[1].receive()
-            logger.debug(f"Engine recieved peer message from {peer_id!r}")
-            await self.handle_peer_message(peer_id, msg)
-            await self.update_peer_requests()
+            engine_msg = await self._msg_from_peer[1].receive()
+            match engine_msg:
+                case HandshakeComplete(peer_id=peer_id, send_channel=send_channel):
+                    logger.debug(f"Engine received HandshakeComplete from {peer_id!r}")
+                    await self.handle_handshake_complete(peer_id, send_channel)
+                case PeerConnectionClosed(peer_id=peer_id):
+                    self._peers.pop(peer_id, None)
+                    logger.info(f"Peer connection closed: {peer_id!r}")
+                case PeerMsg(peer_id=peer_id, msg=msg):
+                    logger.debug(f"Engine received peer message from {peer_id!r}")
+                    await self.handle_peer_message(peer_id, msg)
+                    await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:
         peers = (

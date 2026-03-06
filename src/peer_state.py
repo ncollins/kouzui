@@ -4,7 +4,6 @@ from enum import Enum
 import bitarray
 import trio
 
-import config
 from peer_messages import PeerMessage
 from shared_types import PeerId
 
@@ -20,16 +19,18 @@ class ChokeAlert(Enum):
 
 
 class PeerState(object):
-    def __init__(self, peer_id: PeerId, num_pieces: int) -> None:
+    def __init__(
+        self,
+        peer_id: PeerId,
+        num_pieces: int,
+        send_outgoing: trio.MemorySendChannel[PeerMessage],
+    ) -> None:
         now = datetime.datetime.now()
         pieces = bitarray.bitarray(num_pieces)
         pieces.setall(False)
         self._pieces = pieces
         self._peer_id = peer_id
-        self._outgoing_data_channel: tuple[
-            trio.MemorySendChannel[PeerMessage],
-            trio.MemoryReceiveChannel[PeerMessage],
-        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        self._send_outgoing: trio.MemorySendChannel[PeerMessage] = send_outgoing
         self._choked_us = True
         self._choked_them = True
         # stats
@@ -90,16 +91,10 @@ class PeerState(object):
         return self._peer_id
 
     @property
-    def receive_outgoing_data(
-        self,
-    ) -> trio.MemoryReceiveChannel[PeerMessage]:
-        return self._outgoing_data_channel[1]
-
-    @property
     def send_outgoing_data(
         self,
     ) -> trio.MemorySendChannel[PeerMessage]:
-        return self._outgoing_data_channel[0]
+        return self._send_outgoing
 
     def inc_download_counters(self) -> None:
         self._total_download_count += 1
