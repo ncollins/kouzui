@@ -26,6 +26,9 @@ from internal_messages import (
     AllPiecesWritten,
     BlockToRead,
     CompletePieceToWrite,
+    EngineMessage,
+    HandshakeComplete,
+    PeerConnectionClosed,
     WriteConfirmation,
 )
 from peer_messages import (
@@ -115,8 +118,8 @@ class Engine(object):
         self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[PeerId, PeerMessage]],
-            trio.MemoryReceiveChannel[tuple[PeerId, PeerMessage]],
+            trio.MemorySendChannel[tuple[PeerId, EngineMessage]],
+            trio.MemoryReceiveChannel[tuple[PeerId, EngineMessage]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
@@ -135,7 +138,7 @@ class Engine(object):
         logger.debug(f"stats updated: {self._stats}")
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, PeerMessage]]:
+    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, EngineMessage]]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -360,6 +363,32 @@ class Engine(object):
                 logger.error(error_message)
                 raise Exception(error_message)
 
+    async def handle_handshake_complete(
+        self,
+        peer_id: PeerId,
+        send_channel: trio.MemorySendChannel[PeerMessage],
+    ) -> None:
+        if peer_id in self._peers:
+            logger.info(f"Duplicate peer {peer_id!r}, closing new connection")
+            await send_channel.aclose()
+            return
+        # Create a matching receive channel for this peer — but PeerEngine already
+        # has the receive end.  We create PeerState with the send end that Engine
+        # will use to push messages to PeerEngine.
+        # We need a receive channel to construct PeerState, but PeerEngine already
+        # owns it. We create a dummy one that won't be used.
+        _, dummy_receive = trio.open_memory_channel[PeerMessage](0)
+        ps = peer_state.PeerState(
+            peer_id,
+            self._state._num_pieces,
+            send_channel=send_channel,
+            receive_channel=dummy_receive,
+        )
+        self._peers[peer_id] = ps
+        # Send initial bitfield to the peer
+        await send_channel.send(Bitfield(pieces=self._state._complete))
+        logger.info(f"Handshake complete for {peer_id!r}, sent bitfield")
+
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
             piece_length = self._state.piece_length(index)
@@ -391,7 +420,14 @@ class Engine(object):
             logger.debug("peer_messages_loop")
             peer_id, msg = await self._msg_from_peer[1].receive()
             logger.debug(f"Engine recieved peer message from {peer_id!r}")
-            await self.handle_peer_message(peer_id, msg)
+            match msg:
+                case HandshakeComplete(peer_id=hc_peer_id, send_channel=send_channel):
+                    await self.handle_handshake_complete(hc_peer_id, send_channel)
+                case PeerConnectionClosed(peer_id=closed_peer_id):
+                    self._peers.pop(closed_peer_id, None)
+                    logger.info(f"Peer connection closed: {closed_peer_id!r}")
+                case _:
+                    await self.handle_peer_message(peer_id, msg)
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:
