@@ -7,20 +7,28 @@ It uses the [Trio](https://trio.readthedocs.io) library for concurrent networkin
 The original code, warts and all, is in the branch `v1-recurse-center-2018`.
 
 In February 2026 I began updating the project as an experiment in using AI agents for maintenance 
-work: updating dependencies, adding tests, and improving type checking.
+work: updating dependencies, adding tests, and improving type checking. The branch `v1.5-tidy-up-with-ai-agent-help-2026` maintains the fundamental structure of 
+`v1-recurse-center-2018`, but:
+- introduces `uv` to manage the project and environment
+- updates the code to work with Python >= 3.11 and the latest versions of `trio`, `h11` and `bitarray`.
+- adds an integration test that uses Podman to run [the bittorrent-tracker npm package](https://www.npmjs.com/package/bittorrent-tracker)
+  and multiple Kouzui clients (previously I had run these manually) 
+- contains many small QoL improvements to the codebase:
+  - adds type annotations for all functions and methods
+  - adds dataclasses to replace unstructure data being passed around in tuples
+  - removes all unused imports and most of the commented out code 
 
 ## Installation and running
 
-Kouzui uses the async/await syntax added in Python 3.5, so it will not run on earlier versions of Python.
-It has only been tested with Python 3.6 and Python 3.7, on GNU/Linux (Ubuntu) and Mac OS.
+`kouzui` can easily be installed if you have `uv` on your system:
 
-The requirements are specified in `requirements.txt` and can be installed with `pip install -r requirements.txt`.
-The `bitarray` module is a C-extension so it may need a C compiler and Python developer tools to be installed
-(e.g. Ubuntu will need `python3-dev` installed in addition to `python3`).
-
-It can then be run from the project directory with:
-
-`python src/main.py run path/to/torrent_file.torrent --download-dir path/to/downloads`
+```sh
+uv tool install .
+```
+and then run with:
+```sh
+kouzui run path/to/torrent_file.torrent --download-dir path/to/downloads
+```
 
 ## What it can do
 
