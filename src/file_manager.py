@@ -13,6 +13,7 @@ from internal_messages import (
     WriteConfirmation,
 )
 from peer_messages import Piece
+from shared_types import PeerId
 
 logger = logging.getLogger("file_manager")
 
@@ -92,13 +93,13 @@ class FileManager(object):
         pieces_to_write: trio.MemoryReceiveChannel[CompletePieceToWrite | AllPiecesWritten],
         write_confirmations: trio.MemorySendChannel[WriteConfirmation],
         blocks_to_read: trio.MemoryReceiveChannel[BlockToRead],
-        blocks_for_peers: trio.MemorySendChannel[Piece],
+        pieces_to_send: trio.MemorySendChannel[tuple[PeerId, Piece]],
     ) -> None:
         self._file_wrapper = file_wrapper
         self._pieces_to_write = pieces_to_write
         self._write_confirmations = write_confirmations
         self._blocks_to_read = blocks_to_read
-        self._blocks_for_peers = blocks_for_peers
+        self._pieces_to_send = pieces_to_send
 
     # async def move_file_to_final_location(self):
     #    self._file_wrapper.move_file_to_final_location()
@@ -124,6 +125,13 @@ class FileManager(object):
             data = self._file_wrapper.read_block(
                 msg.block.piece_index, msg.block.block_start, msg.block.block_length
             )
-            await self._blocks_for_peers.send(
-                Piece(peer_id=msg.peer_id, block=msg.block, data=data)
+            await self._pieces_to_send.send(
+                (
+                    msg.peer_id,
+                    Piece(
+                        piece_index=msg.block.piece_index,
+                        block_start=msg.block.block_start,
+                        data=data,
+                    ),
+                )
             )
