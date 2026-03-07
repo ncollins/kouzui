@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import bitarray
+import trio
 
 from shared_types import Block
 
@@ -176,3 +177,28 @@ def parse_message(msg: bytes) -> PeerMessage:
             return Cancel(block=block)
         case _:
             raise ValueError(f"{msg_type!r} is not a valid MessageTypeByte")
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class CloseConnectionOrder:
+    pass
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerConnectionStatus(abc.ABC):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerHandshakeSuccess(PeerConnectionStatus):
+    peer_channel: trio.MemorySendChannel[PeerMessage | CloseConnectionOrder]
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerConnectionShutdown(PeerConnectionStatus):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerConnectionError(PeerConnectionStatus):
+    exception: Exception

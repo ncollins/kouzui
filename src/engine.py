@@ -1,5 +1,6 @@
 import collections
 from collections.abc import Iterable
+import functools
 import hashlib
 import io
 import logging
@@ -39,7 +40,13 @@ from peer_messages import (
     Bitfield,
     Interested,
     NotInterested,
+    PeerConnectionStatus,
+    PeerHandshakeSuccess,
+    PeerConnectionShutdown,
+    PeerConnectionError,
+    CloseConnectionOrder,
 )
+from peer_state import PeerState
 from shared_types import Block, PeerAddress, PeerId
 
 logger = logging.getLogger("engine")
@@ -115,8 +122,8 @@ class Engine(object):
         self._pieces_for_peers: trio.MemoryReceiveChannel[tuple[PeerId, Piece]] = pieces_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[PeerId, PeerMessage]],
-            trio.MemoryReceiveChannel[tuple[PeerId, PeerMessage]],
+            trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
+            trio.MemoryReceiveChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
         ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
@@ -135,7 +142,9 @@ class Engine(object):
         logger.debug(f"stats updated: {self._stats}")
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, PeerMessage]]:
+    def peer_messages(
+        self,
+    ) -> trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -230,7 +239,14 @@ class Engine(object):
             new = False
 
     async def peer_server_loop(self) -> None:
-        await trio.serve_tcp(peer_connection.make_handler(self), self._state.listening_port)
+        await trio.serve_tcp(
+            peer_connection.make_handler(
+                torrent=self._state,
+                token_bucket=self.token_bucket,
+                channel_to_engine=self._msg_from_peer[0],
+            ),
+            self._state.listening_port,
+        )
 
     async def peer_clients_loop(self) -> None:
         """
@@ -241,7 +257,14 @@ class Engine(object):
             while True:
                 logger.debug("peer_clients_loop")
                 address = await self._peers_without_connection[1].receive()
-                nursery.start_soon(peer_connection.make_standalone, self, address)
+                make_standalone = functools.partial(
+                    peer_connection.make_standalone,
+                    torrent=self._state,
+                    token_bucket=self.token_bucket,
+                    channel_to_engine=self._msg_from_peer[0],
+                    peer_address=address,
+                )
+                nursery.start_soon(make_standalone)
 
     async def update_peers(self, peers: Iterable[tuple[PeerAddress, PeerId | None]]) -> None:
         for address, peer_id in peers:
@@ -300,16 +323,42 @@ class Engine(object):
                     for block in new_requests:
                         self.requests.add_request(address, block)
                         self._inc_stats(StatField.REQUESTS_OUT)
-                        await peer.send_outgoing_data.send(Request(block=block))
+                        await peer.send_channel.send(Request(block=block))
             else:
                 logger.info(f"No target pieces for {address!r}")
 
+    async def handle_peer_connection_status(
+        self, peer_id: PeerId, connection_status: PeerConnectionStatus
+    ) -> None:
+        match connection_status:
+            case PeerHandshakeSuccess(peer_channel=peer_channel) if peer_id in self._peers:
+                logger.info(f"{peer_id!r} already exists, sending {CloseConnectionOrder()}")
+                await connection_status.peer_channel.send(CloseConnectionOrder())
+                return
+            case PeerHandshakeSuccess(peer_channel=peer_channel):
+                # Send the Bitfield before adding the peer_id, peer_state to the dictionary
+                # to ensure that it gets sent before any other messages
+                await peer_channel.send(Bitfield(pieces=self._state._complete))
+                peer_state = PeerState(peer_id, self._state._num_pieces, send_channel=peer_channel)
+                self._peers[peer_id] = peer_state
+                return
+            case PeerConnectionShutdown() | PeerConnectionError():
+                logging.info(
+                    f"removing {peer_id!r} from Engine._peers because of {connection_status}"
+                )
+                if peer_id in self._peers:
+                    del self._peers[peer_id]
+            case _:
+                assert False
+
     async def handle_peer_message(self, peer_id: PeerId, msg: PeerMessage) -> None:
-        if peer_id not in self._peers:
-            logger.info(f"did not handle message because peer {peer_id!r} no longer exists")
-            return
-        peer_state = self._peers[peer_id]
         logger.info(f"Received {msg} from {peer_id!r}")
+        peer_state = self._peers.get(peer_id)
+        if peer_id not in self._peers:
+            logger.info(f"did not handle {msg} because peer_id={peer_id!r} no longer exists")
+            return
+
+        peer_state = self._peers[peer_id]
         match msg:
             case Choke():
                 peer_state.choke_us()
@@ -343,10 +392,7 @@ class Engine(object):
             case peer_messages.MessageTypeByte.CANCEL:
                 logger.warning(f"{msg} is not implemented")
             case _:
-                # TODO - Exceptions are bad here! Should this be assert false?
-                error_message = f"Bad message: {msg}"
-                logger.error(error_message)
-                raise Exception(error_message)
+                assert False
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
@@ -377,9 +423,15 @@ class Engine(object):
     async def peer_messages_loop(self) -> None:
         while True:
             logger.debug("peer_messages_loop")
-            peer_id, raw_msg = await self._msg_from_peer[1].receive()
+            peer_id, msg = await self._msg_from_peer[1].receive()
             logger.debug(f"Engine recieved peer message from {peer_id!r}")
-            await self.handle_peer_message(peer_id, raw_msg)
+            match msg:
+                case PeerConnectionStatus():
+                    await self.handle_peer_connection_status(peer_id, msg)
+                case PeerMessage():
+                    await self.handle_peer_message(peer_id, msg)
+                case _:
+                    assert False
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:
@@ -387,7 +439,7 @@ class Engine(object):
             self._peers.copy()
         )  # shallow copy, but that should be enough as we're not modifying the PeerState objects
         for _peer_id, peer_s in peers.items():
-            await peer_s.send_outgoing_data.send(Have(piece_index=index))
+            await peer_s.send_channel.send(Have(piece_index=index))
 
     async def file_write_confirmation_loop(self) -> None:
         while True:
@@ -408,7 +460,7 @@ class Engine(object):
             if peer_id in self._peers:
                 p_state = self._peers[peer_id]
                 p_state.inc_upload_counters()
-                await p_state.send_outgoing_data.send(piece)
+                await p_state.send_channel.send(piece)
             else:
                 logger.info(f"dropped piece {piece} for {peer_id!r} because peer no longer exists")
 
@@ -438,14 +490,14 @@ class Engine(object):
                     alert = p_state.unchoke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.send_outgoing_data.send(Unchoke())
+                        await p_state.send_channel.send(Unchoke())
             for p_id in choke:
                 if p_id in self._peers:  # protect against state change while putting in queue
                     p_state = self._peers[p_id]
                     alert = p_state.choke_them()
                     p_state.reset_rolling_download_count()
                     if alert == peer_state.ChokeAlert.ALERT:
-                        await p_state.send_outgoing_data.send(Choke())
+                        await p_state.send_channel.send(Choke())
             # update period
             period = (period + 1) % 3  # rotate period every 30 seconds
 
