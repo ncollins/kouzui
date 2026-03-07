@@ -13,6 +13,7 @@ import typer
 import bencode
 import engine
 import file_manager
+from config import Config, DEFAULT_CONFIG, load_config
 from torrent import Torrent
 
 logger = logging.getLogger("main")
@@ -28,10 +29,6 @@ def read_torrent_file(torrent_file: Path) -> tuple[OrderedDict[bytes, Any], byte
         logger.debug(f"torrent_data = {torrent_data}")
     torrent_info = bencode.encode_value(torrent_data[b"info"])
     logger.debug(f"torrent info = {torrent_info!r}")
-    # if True:
-    #    with open(args.torrent_path, 'rb') as f:
-    #        raw = f.read()
-    #        logger.debug("info_string matches {}".format(torrent_info in raw))
     return (torrent_data, torrent_info)
 
 
@@ -41,6 +38,7 @@ def run(
     listening_port: Optional[int],
     download_dir: Optional[Path],
     auto_shutdown: bool,
+    config: Config = DEFAULT_CONFIG,
 ) -> None:
     if log_level is not None:
         log_level = getattr(logging, log_level.upper())
@@ -57,8 +55,8 @@ def run(
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
     port = int(listening_port) if listening_port else None
-    t = Torrent(torrent_data, torrent_info, download_dir, port)
-    engine.run(t, auto_shutdown=auto_shutdown)
+    t = Torrent(torrent_data, torrent_info, download_dir, port, config=config)
+    engine.run(t, auto_shutdown=auto_shutdown, config=config)
 
 
 def make_test_files(
@@ -137,9 +135,11 @@ def run_command(
     auto_shutdown: bool = typer.Option(
         False, "--auto-shutdown", help="automatically shutdown if there are no peers downloading"
     ),
+    config_file: Optional[Path] = typer.Option(None, "--config", help="path to TOML config file"),
 ) -> None:
     """Run Bittorrent client"""
-    run(log_level, torrent_file, listening_port, download_dir, auto_shutdown)
+    config = load_config(config_file) if config_file else DEFAULT_CONFIG
+    run(log_level, torrent_file, listening_port, download_dir, auto_shutdown, config=config)
 
 
 @app.command("make-test-files")

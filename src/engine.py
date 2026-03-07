@@ -14,7 +14,6 @@ import trio
 import bencode
 import display
 import file_manager
-import peer_messages
 import peer_connection
 import requests
 import peer_state
@@ -22,14 +21,28 @@ from token_bucket import TokenBucket
 import torrent as state
 import tracker
 
-import config
+from config import Config, DEFAULT_CONFIG
 from internal_messages import (
     AllPiecesWritten,
     BlockToRead,
     CompletePieceToWrite,
+    EngineMessage,
+    HandshakeComplete,
+    PeerConnectionClosed,
     WriteConfirmation,
 )
-from peer_messages import Choke, Have, Piece, RawPeerMessage, Request, Unchoke
+from peer_messages import (
+    Bitfield,
+    Cancel,
+    Choke,
+    Have,
+    Interested,
+    NotInterested,
+    Piece,
+    PeerMessage,
+    Request,
+    Unchoke,
+)
 from shared_types import Block, PeerAddress, PeerId
 
 logger = logging.getLogger("engine")
@@ -86,14 +99,16 @@ class Engine(object):
         blocks_to_read: trio.MemorySendChannel[BlockToRead],
         blocks_for_peers: trio.MemoryReceiveChannel[Piece],
         auto_shutdown: bool = False,
+        config: Config = DEFAULT_CONFIG,
     ) -> None:
         self._auto_shutdown: bool = auto_shutdown
+        self._config = config
         self._state: state.Torrent = torrent
         # interact with self
         self._peers_without_connection: tuple[
             trio.MemorySendChannel[PeerAddress],
             trio.MemoryReceiveChannel[PeerAddress],
-        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+        ] = trio.open_memory_channel(config.internal_queue_size)
         # interact with FileManager
         self._complete_pieces_to_write: trio.MemorySendChannel[
             CompletePieceToWrite | AllPiecesWritten
@@ -105,9 +120,9 @@ class Engine(object):
         self._blocks_for_peers: trio.MemoryReceiveChannel[Piece] = blocks_for_peers
         # interact with peer connections
         self._msg_from_peer: tuple[
-            trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]],
-            trio.MemoryReceiveChannel[tuple[PeerId, RawPeerMessage]],
-        ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+            trio.MemorySendChannel[tuple[PeerId, EngineMessage]],
+            trio.MemoryReceiveChannel[tuple[PeerId, EngineMessage]],
+        ] = trio.open_memory_channel(config.internal_queue_size)
         # queues for sending TO peers are initialized on a per-peer basis
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
         # data received but not written to disk
@@ -115,17 +130,17 @@ class Engine(object):
         self.requests = requests.RequestManager()
         self._stats: dict[StatField, int] = {f: 0 for f in StatField}
 
-        if config.MAX_OUTGOING_BYTES_PER_SECOND is None:
+        if config.max_outgoing_bytes_per_second is None:
             self.token_bucket: TokenBucket | None = None
         else:
-            self.token_bucket = TokenBucket(config.MAX_OUTGOING_BYTES_PER_SECOND)
+            self.token_bucket = TokenBucket(config.max_outgoing_bytes_per_second)
 
     def _inc_stats(self, field: StatField) -> None:
         self._stats[field] += 1
         logger.debug(f"stats updated: {self._stats}")
 
     @property
-    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, RawPeerMessage]]:
+    def peer_messages(self) -> trio.MemorySendChannel[tuple[PeerId, EngineMessage]]:
         return self._msg_from_peer[0]
 
     async def run(self) -> None:
@@ -140,7 +155,7 @@ class Engine(object):
             nursery.start_soon(self.info_loop)
             nursery.start_soon(self.choking_loop)
             nursery.start_soon(
-                self.delete_stale_requests_loop, config.DELETE_STALE_REQUESTS_SECONDS
+                self.delete_stale_requests_loop, self._config.delete_stale_requests_seconds
             )
             if self.token_bucket is not None:
                 nursery.start_soon(self.token_bucket.loop)
@@ -243,7 +258,7 @@ class Engine(object):
 
     def _blocks_from_index(self, index: int) -> set[Block]:
         piece_length = self._state.piece_length(index)
-        block_length = min(piece_length, config.BLOCK_SIZE)
+        block_length = min(piece_length, self._config.block_size)
         begin_indexes = list(range(0, piece_length, block_length))
         return set(
             Block(
@@ -274,7 +289,7 @@ class Engine(object):
                     f"{address!r}: self any? {self._state._complete.any()}, peer any? {peer._pieces.any()}, target_index = {target_index}"
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
-                if len(existing_requests) > config.MAX_OUTSTANDING_REQUESTS_PER_PEER:
+                if len(existing_requests) > self._config.max_outstanding_requests_per_peer:
                     logger.info(
                         f"{address!r}: Not making new requests: {len(existing_requests)} existing"
                     )
@@ -294,79 +309,99 @@ class Engine(object):
             else:
                 logger.info(f"No target pieces for {address!r}")
 
-    async def handle_peer_message(self, peer_id: PeerId, raw_msg: RawPeerMessage) -> None:
+    async def handle_peer_message(self, peer_id: PeerId, msg: PeerMessage) -> None:
         if peer_id not in self._peers:
             logger.info(f"did not handle message because peer {peer_id!r} no longer exists")
             return
-        peer_state = self._peers[peer_id]
-        match raw_msg.msg_type:
-            case peer_messages.MessageTypeByte.CHOKE:
+        ps = self._peers[peer_id]
+        match msg:
+            case Choke():
                 logger.info(f"Received CHOKE from {peer_id!r}")
-                peer_state.choke_us()
-            case peer_messages.MessageTypeByte.UNCHOKE:
+                ps.choke_us()
+            case Unchoke():
                 logger.info(f"Received UNCHOKE from {peer_id!r}")
-                peer_state.unchoke_us()
-            case peer_messages.MessageTypeByte.INTERESTED:
+                ps.unchoke_us()
+            case Interested():
                 logger.warning(f"Received INTERESTED from {peer_id!r} (not implemented)")  # TODO
-            case peer_messages.MessageTypeByte.NOT_INTERESTED:
+            case NotInterested():
                 logger.warning(
                     f"Received NOT_INTERESTED from {peer_id!r} (not implemented)"
                 )  # TODO
-            case peer_messages.MessageTypeByte.HAVE:
-                index: int = peer_messages.parse_have(raw_msg.payload)
-                logger.debug(f"Received HAVE {index} from {peer_id!r}")
-                peer_state.get_pieces()[index] = True
-            case peer_messages.MessageTypeByte.BITFIELD:
+            case Have(piece_index=piece_index):
+                logger.debug(f"Received HAVE {piece_index} from {peer_id!r}")
+                ps.get_pieces()[piece_index] = True
+            case Bitfield(pieces=pieces):
                 logger.info(f"Received BITFIELD from {peer_id!r}")
-                # TODO would be useful to log what percentage of the file the peer has
-                bitfield = peer_messages.parse_bitfield(raw_msg.payload)
-                peer_state.set_pieces(bitfield)
-            case peer_messages.MessageTypeByte.REQUEST:
+                ps.set_pieces(pieces)
+            case Request(blocks=blocks):
                 self._inc_stats(StatField.REQUESTS_IN)
-                request_info = peer_messages.parse_request_or_cancel(raw_msg.payload)
-                logger.info(f"Received REQUEST from {request_info} from {peer_state.peer_id!r}")
-                if peer_state.is_peer_choked:
-                    logger.warning(
-                        f"{peer_state.peer_id!r} requested {request_info.piece_index} but peer is choked"
-                    )
-                elif self._state._complete[request_info.piece_index]:
-                    await self._blocks_to_read.send(
-                        BlockToRead(peer_id=peer_state.peer_id, block=request_info)
-                    )
-                else:
-                    logger.warning(
-                        f"{peer_state.peer_id!r} requested {request_info.piece_index} but piece is incomplete"
-                    )
-            case peer_messages.MessageTypeByte.PIECE:
-                (index, begin, data) = peer_messages.parse_piece(raw_msg.payload)
+                for block in blocks:
+                    logger.info(f"Received REQUEST from {block} from {ps.peer_id!r}")
+                    if ps.is_peer_choked:
+                        logger.warning(
+                            f"{ps.peer_id!r} requested {block.piece_index} but peer is choked"
+                        )
+                    elif self._state._complete[block.piece_index]:
+                        await self._blocks_to_read.send(
+                            BlockToRead(peer_id=ps.peer_id, block=block)
+                        )
+                    else:
+                        logger.warning(
+                            f"{ps.peer_id!r} requested {block.piece_index} but piece is incomplete"
+                        )
+            case Piece(block=block, data=data):
                 self._inc_stats(StatField.BLOCKS_IN)
                 logger.info(
-                    f"Received block {(index, begin, len(data))} from {peer_state.peer_id!r}"
+                    f"Received block {(block.piece_index, block.block_start, len(data))} from {ps.peer_id!r}"
                 )
-                peer_state.inc_download_counters()
-                await self.handle_block_received(index, begin, data)
-            case peer_messages.MessageTypeByte.CANCEL:
-                logger.warning(f"Received CANCEL from {peer_id!r} (not implemented)")  # TODO
-                request_info = peer_messages.parse_request_or_cancel(raw_msg.payload)
+                ps.inc_download_counters()
+                await self.handle_block_received(block.piece_index, block.block_start, data)
+            case Cancel(block=block):
+                logger.warning(
+                    f"Received CANCEL for {block} from {peer_id!r} (not implemented)"
+                )  # TODO
             case _:
-                # TODO - Exceptions are bad here! Should this be assert false?
-                error_message = (
-                    f"Bad message: msg_type = {raw_msg.msg_type}, msg_payload = {raw_msg.payload!r}"
-                )
+                error_message = f"Unhandled message type: {msg}"
                 logger.error(error_message)
                 raise Exception(error_message)
+
+    async def handle_handshake_complete(
+        self,
+        peer_id: PeerId,
+        send_channel: trio.MemorySendChannel[PeerMessage],
+    ) -> None:
+        if peer_id in self._peers:
+            logger.info(f"Duplicate peer {peer_id!r}, closing new connection")
+            await send_channel.aclose()
+            return
+        # Create a matching receive channel for this peer — but PeerEngine already
+        # has the receive end.  We create PeerState with the send end that Engine
+        # will use to push messages to PeerEngine.
+        # We need a receive channel to construct PeerState, but PeerEngine already
+        # owns it. We create a dummy one that won't be used.
+        _, dummy_receive = trio.open_memory_channel[PeerMessage](0)
+        ps = peer_state.PeerState(
+            peer_id,
+            self._state._num_pieces,
+            send_channel=send_channel,
+            receive_channel=dummy_receive,
+        )
+        self._peers[peer_id] = ps
+        # Send initial bitfield to the peer
+        await send_channel.send(Bitfield(pieces=self._state._complete))
+        logger.info(f"Handshake complete for {peer_id!r}, sent bitfield")
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
             piece_length = self._state.piece_length(index)
-            completed_blocks = bitarray.bitarray(math.ceil(piece_length / config.BLOCK_SIZE))
+            completed_blocks = bitarray.bitarray(math.ceil(piece_length / self._config.block_size))
             completed_blocks.setall(False)
             piece_data = bytearray(piece_length)
             self._received_blocks[index] = (completed_blocks, piece_data)
         else:
             completed_blocks = self._received_blocks[index][0]
             piece_data = self._received_blocks[index][1]
-        block_index = begin // config.BLOCK_SIZE
+        block_index = begin // self._config.block_size
         completed_blocks[block_index] = True
         piece_data[begin : begin + len(data)] = data
         if completed_blocks.all():
@@ -385,9 +420,16 @@ class Engine(object):
     async def peer_messages_loop(self) -> None:
         while True:
             logger.debug("peer_messages_loop")
-            peer_id, raw_msg = await self._msg_from_peer[1].receive()
+            peer_id, msg = await self._msg_from_peer[1].receive()
             logger.debug(f"Engine recieved peer message from {peer_id!r}")
-            await self.handle_peer_message(peer_id, raw_msg)
+            match msg:
+                case HandshakeComplete(peer_id=hc_peer_id, send_channel=send_channel):
+                    await self.handle_handshake_complete(hc_peer_id, send_channel)
+                case PeerConnectionClosed(peer_id=closed_peer_id):
+                    self._peers.pop(closed_peer_id, None)
+                    logger.info(f"Peer connection closed: {closed_peer_id!r}")
+                case _:
+                    await self.handle_peer_message(peer_id, msg)
             await self.update_peer_requests()
 
     async def announce_have_piece(self, index: int) -> None:
@@ -437,8 +479,8 @@ class Engine(object):
             logger.info(f"Peers ordered by successful downloads in last 20 seconds: {peers}")
             # First X are unchoked
             # Rest are choked
-            unchoke = set(p[0] for p in peers[: config.NUM_UNCHOKED_PEERS])
-            choke = set(p[0] for p in peers[config.NUM_UNCHOKED_PEERS :])
+            unchoke = set(p[0] for p in peers[: self._config.num_unchoked_peers])
+            choke = set(p[0] for p in peers[self._config.num_unchoked_peers :])
             if optimistic_unchoke:
                 unchoke.add(optimistic_unchoke)
                 choke.discard(optimistic_unchoke)
@@ -466,7 +508,7 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
+def run(torrent: state.Torrent, *, auto_shutdown: bool, config: Config = DEFAULT_CONFIG) -> None:
     try:
         # create FileManager and check hashes if file already exists
         file_wrapper = file_manager.FileWrapper(torrent=torrent)
@@ -480,15 +522,15 @@ def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
 
         s_complete_pieces, r_complete_pieces = trio.open_memory_channel[
             CompletePieceToWrite | AllPiecesWritten
-        ](config.INTERNAL_QUEUE_SIZE)
+        ](config.internal_queue_size)
         s_write_confirmations, r_write_confirmations = trio.open_memory_channel[WriteConfirmation](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
         s_blocks_to_read, r_blocks_to_read = trio.open_memory_channel[BlockToRead](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
         s_blocks_for_peers, r_blocks_for_peers = trio.open_memory_channel[Piece](
-            config.INTERNAL_QUEUE_SIZE
+            config.internal_queue_size
         )
 
         file_engine = file_manager.FileManager(
@@ -506,6 +548,7 @@ def run(torrent: state.Torrent, *, auto_shutdown: bool) -> None:
             blocks_to_read=s_blocks_to_read,
             blocks_for_peers=r_blocks_for_peers,
             auto_shutdown=auto_shutdown,
+            config=config,
         )
 
         async def run() -> None:

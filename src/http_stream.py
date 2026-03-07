@@ -4,15 +4,21 @@ from typing import Type
 import trio
 import h11
 
-from config import STREAM_CHUNK_SIZE
+from config import Config, DEFAULT_CONFIG
 
 logger = logging.getLogger("httpstream")
 
 
 class HttpStream:
-    def __init__(self, stream: trio.abc.Stream, role: Type[h11.CLIENT | h11.SERVER]) -> None:
+    def __init__(
+        self,
+        stream: trio.abc.Stream,
+        role: Type[h11.CLIENT | h11.SERVER],
+        config: Config = DEFAULT_CONFIG,
+    ) -> None:
         self.stream: trio.abc.Stream = stream
         self.conn: h11.Connection = h11.Connection(our_role=role)
+        self._config = config
         logger.debug(f"h11 connection {self.conn}")
         logger.debug(f"our role = {self.conn.our_role}")
         logger.debug(f"their role = {self.conn.their_role}")
@@ -23,7 +29,7 @@ class HttpStream:
             e = self.conn.next_event()
             logger.debug(f'h11 event = "{e}"')
             if e == h11.NEED_DATA:
-                raw_bytes = await self.stream.receive_some(STREAM_CHUNK_SIZE)
+                raw_bytes = await self.stream.receive_some(self._config.stream_chunk_size)
                 logger.debug(f'raw bytes = "{raw_bytes!r}"')
                 # if raw_bytes != b'':
                 match raw_bytes:

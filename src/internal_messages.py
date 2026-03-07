@@ -1,5 +1,9 @@
 from dataclasses import dataclass
+from typing import TypeAlias
 
+import trio
+
+from peer_messages import PeerMessage
 from shared_types import Block, PeerId
 
 
@@ -23,3 +27,17 @@ class WriteConfirmation:
 class BlockToRead:
     peer_id: PeerId
     block: Block
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class HandshakeComplete:
+    peer_id: PeerId
+    send_channel: trio.MemorySendChannel[PeerMessage]
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class PeerConnectionClosed:
+    peer_id: PeerId
+
+
+EngineMessage: TypeAlias = PeerMessage | HandshakeComplete | PeerConnectionClosed
