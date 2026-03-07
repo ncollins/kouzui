@@ -334,20 +334,17 @@ class Engine(object):
             case PeerHandshakeSuccess(peer_channel=peer_channel) if peer_id in self._peers:
                 logger.info(f"{peer_id!r} already exists, sending {CloseConnectionOrder()}")
                 await connection_status.peer_channel.send(CloseConnectionOrder())
-                return
             case PeerHandshakeSuccess(peer_channel=peer_channel):
                 # Send the Bitfield before adding the peer_id, peer_state to the dictionary
                 # to ensure that it gets sent before any other messages
                 await peer_channel.send(Bitfield(pieces=self._state._complete))
                 peer_state = PeerState(peer_id, self._state._num_pieces, send_channel=peer_channel)
                 self._peers[peer_id] = peer_state
-                return
             case PeerConnectionShutdown() | PeerConnectionError():
                 logging.info(
                     f"removing {peer_id!r} from Engine._peers because of {connection_status}"
                 )
-                if peer_id in self._peers:
-                    del self._peers[peer_id]
+                self._peers.pop(peer_id, None)
             case _:
                 assert False
 
