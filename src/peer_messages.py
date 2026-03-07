@@ -78,6 +78,13 @@ class Bitfield(PeerMessage):
         raw_msg += self.pieces.tobytes()
         return raw_msg
 
+    def __str__(self) -> str:
+        if len(self.pieces) < 20:
+            piece_str = str(self.pieces)
+        else:
+            piece_str = f"<length {len(self.pieces)}>"
+        return f"Bitfield(pieces={piece_str})"
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Request(PeerMessage):
@@ -103,6 +110,13 @@ class Piece(PeerMessage):
         raw_msg += (self.block_start).to_bytes(4, byteorder="big")
         raw_msg += self.data
         return raw_msg
+
+    def __str__(self) -> str:
+        if len(self.data) < 20:
+            data_str = str(self.data)
+        else:
+            data_str = f"<length {len(self.data)}>"
+        return f"Piece(piece_index={self.piece_index}, block_start={self.block_start}, data={data_str}>)"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -46,3 +46,28 @@ def test_bitfield(data: bytes) -> None:
 def test_piece(index: int, start: int, data: bytes) -> None:
     msg = Piece(piece_index=index, block_start=start, data=data)
     assert msg == parse_message(msg.to_bytes())
+
+
+def test_piece_str_short_data() -> None:
+    data = b"hello"
+    msg = Piece(piece_index=3, block_start=8192, data=data)
+    assert str(msg) == f"Piece(piece_index=3, block_start=8192, data={data!s}>)"
+
+
+def test_piece_str_long_data() -> None:
+    data = b"x" * 20
+    msg = Piece(piece_index=0, block_start=0, data=data)
+    assert str(msg) == "Piece(piece_index=0, block_start=0, data=<length 20>>)"
+
+
+def test_bitfield_str_short() -> None:
+    bits = bitarray.bitarray("10110")
+    msg = Bitfield(pieces=bits)
+    assert str(msg) == f"Bitfield(pieces={bits!s})"
+
+
+def test_bitfield_str_long() -> None:
+    bits = bitarray.bitarray(20)
+    bits.setall(0)
+    msg = Bitfield(pieces=bits)
+    assert str(msg) == "Bitfield(pieces=<length 20>)"
