@@ -10,7 +10,7 @@ from shared_types import PeerId
 
 import bitarray
 
-from config import DEFAULT_LISTENING_PORT
+_DEFAULT_LISTENING_PORT = 50881
 
 logger = logging.getLogger("torrent")
 
@@ -137,7 +137,7 @@ class Torrent(object):
         if self._listening_port:
             return self._listening_port
         else:
-            return DEFAULT_LISTENING_PORT
+            return _DEFAULT_LISTENING_PORT
 
     @property
     def file_path(self) -> Path:

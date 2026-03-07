@@ -13,6 +13,7 @@ import typer
 import bencode
 import engine
 import file_manager
+from config import Config, DEFAULT_CONFIG, load_config
 from torrent import Torrent
 
 logger = logging.getLogger("main")
@@ -41,6 +42,7 @@ def run(
     listening_port: Optional[int],
     download_dir: Optional[Path],
     auto_shutdown: bool,
+    config: Config = DEFAULT_CONFIG,
 ) -> None:
     if log_level is not None:
         log_level = getattr(logging, log_level.upper())
@@ -56,9 +58,9 @@ def run(
     )
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
-    port = int(listening_port) if listening_port else None
+    port = int(listening_port) if listening_port else config.default_listening_port
     t = Torrent(torrent_data, torrent_info, download_dir, port)
-    engine.run(t, auto_shutdown=auto_shutdown)
+    engine.run(t, auto_shutdown=auto_shutdown, config=config)
 
 
 def make_test_files(
@@ -66,8 +68,9 @@ def make_test_files(
     torrent_info: bytes,
     download_dir: Path,
     number_of_files: int,
+    config: Config = DEFAULT_CONFIG,
 ) -> None:
-    t = Torrent(torrent_data, torrent_info, download_dir, None)
+    t = Torrent(torrent_data, torrent_info, download_dir, config.default_listening_port)
     files = []
     main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
@@ -81,7 +84,12 @@ def make_test_files(
             random.choice(files).write_piece(p.index, data)
 
 
-def test(test_dir: Path, torrent_file: Path, number_of_clients: int) -> None:
+def test(
+    test_dir: Path,
+    torrent_file: Path,
+    number_of_clients: int,
+    config: Config = DEFAULT_CONFIG,
+) -> None:
     # TODO separate timing of file copy and torrenting
     start_time = time.perf_counter()
     torrent_data, _torrent_info = read_torrent_file(torrent_file)
@@ -137,9 +145,13 @@ def run_command(
     auto_shutdown: bool = typer.Option(
         False, "--auto-shutdown", help="automatically shutdown if there are no peers downloading"
     ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", help="path to a TOML configuration file"
+    ),
 ) -> None:
     """Run Bittorrent client"""
-    run(log_level, torrent_file, listening_port, download_dir, auto_shutdown)
+    cfg = load_config(config_file) if config_file else DEFAULT_CONFIG
+    run(log_level, torrent_file, listening_port, download_dir, auto_shutdown, cfg)
 
 
 @app.command("make-test-files")
@@ -153,13 +165,17 @@ def make_test_files_command(
         "--download-dir",
         help="directory to find the complete file and save the incomplete files",
     ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", help="path to a TOML configuration file"
+    ),
 ) -> None:
     """Split a complete file into incomplete files for testing"""
+    cfg = load_config(config_file) if config_file else DEFAULT_CONFIG
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     dl_dir = (
         download_dir if download_dir else Path.cwd()
     )  # os.path.dirname(os.path.abspath(__file__))
-    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files)
+    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files, cfg)
 
 
 @app.command("test-run")
@@ -167,9 +183,13 @@ def test_run_command(
     torrent_path: Path = typer.Argument(help="path to the .torrent file"),
     test_dir: Path = typer.Option(None, "--test-dir", help="test directory"),
     number_of_clients: int = typer.Option(..., "--number-of-clients", help="number of clients"),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", help="path to a TOML configuration file"
+    ),
 ) -> None:
     """Run multiple clients in separate processes for testing"""
-    test(test_dir, torrent_path, number_of_clients)
+    cfg = load_config(config_file) if config_file else DEFAULT_CONFIG
+    test(test_dir, torrent_path, number_of_clients, cfg)
 
 
 def main() -> None:
