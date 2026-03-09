@@ -23,15 +23,20 @@ class MessageTypeByte(IntEnum):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class PeerMessage(abc.ABC):
     @abc.abstractmethod
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raise NotImplementedError
+
+    def to_bytes(self) -> bytes:
+        payload = self._to_payload()
+        length_header = len(payload).to_bytes(4, byteorder="big")
+        return length_header + payload
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Choke(PeerMessage):
     pass
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         return bytes([MessageTypeByte.CHOKE])
 
 
@@ -39,7 +44,7 @@ class Choke(PeerMessage):
 class Unchoke(PeerMessage):
     pass
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         return bytes([MessageTypeByte.UNCHOKE])
 
 
@@ -47,7 +52,7 @@ class Unchoke(PeerMessage):
 class Interested(PeerMessage):
     pass
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         return bytes([MessageTypeByte.INTERESTED])
 
 
@@ -55,7 +60,7 @@ class Interested(PeerMessage):
 class NotInterested(PeerMessage):
     pass
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         return bytes([MessageTypeByte.NOT_INTERESTED])
 
 
@@ -63,7 +68,7 @@ class NotInterested(PeerMessage):
 class Have(PeerMessage):
     piece_index: int
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raw_msg = bytes([MessageTypeByte.HAVE])
         raw_msg += (self.piece_index).to_bytes(4, byteorder="big")
         return raw_msg
@@ -73,7 +78,7 @@ class Have(PeerMessage):
 class Bitfield(PeerMessage):
     pieces: bitarray.bitarray
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raw_msg = bytes([MessageTypeByte.BITFIELD])
         raw_msg += self.pieces.tobytes()
         return raw_msg
@@ -90,7 +95,7 @@ class Bitfield(PeerMessage):
 class Request(PeerMessage):
     block: Block
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raw_msg = bytes([MessageTypeByte.REQUEST])
         raw_msg += (self.block.piece_index).to_bytes(4, byteorder="big")
         raw_msg += (self.block.block_start).to_bytes(4, byteorder="big")
@@ -104,7 +109,7 @@ class Piece(PeerMessage):
     block_start: int
     data: bytes
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raw_msg = bytes([MessageTypeByte.PIECE])
         raw_msg += (self.piece_index).to_bytes(4, byteorder="big")
         raw_msg += (self.block_start).to_bytes(4, byteorder="big")
@@ -123,7 +128,7 @@ class Piece(PeerMessage):
 class Cancel(PeerMessage):
     block: Block
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         raw_msg = bytes([MessageTypeByte.CANCEL])
         raw_msg += (self.block.piece_index).to_bytes(4, byteorder="big")
         raw_msg += (self.block.block_start).to_bytes(4, byteorder="big")
@@ -134,7 +139,7 @@ class Cancel(PeerMessage):
 class KeepAlive(PeerMessage):
     pass
 
-    def to_bytes(self) -> bytes:
+    def _to_payload(self) -> bytes:
         return b""
 
 

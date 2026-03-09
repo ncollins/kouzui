@@ -41,12 +41,6 @@ async def insert_keepalive(
                 yield msg
 
 
-def _to_bytes_with_length(p: PeerMessage) -> bytes:
-    payload = p.to_bytes()
-    length_header = len(payload).to_bytes(4, byteorder="big")
-    return length_header + payload
-
-
 def _build_handshake(info_hash: bytes, peer_id: PeerId) -> bytes:
     return b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
 
@@ -152,7 +146,7 @@ class PeerStream(object):
             yield messages
 
     async def send_message(self, msg: PeerMessage) -> None:
-        data = _to_bytes_with_length(msg)
+        data = msg.to_bytes()
         logger.debug(
             f"Pre-send message of length {len(data)} (includes 4 bytes for length) on {self._stream}"
         )
