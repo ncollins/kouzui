@@ -6,6 +6,9 @@ format:
 format-check:
 	uv run ruff format --check .
 
+uv-lock-check:
+	uv lock --check
+
 typecheck:
 	uv run mypy .
 	uv run ty check .
@@ -13,7 +16,7 @@ typecheck:
 lint:
 	uv run ruff check .
 
-check: format-check lint typecheck unit-test
+check: format-check uv-lock-check lint typecheck unit-test 
 
 TEST_DATA_ABS    := $(abspath integration_tests/test_data)
 POD_MANIFEST_TMP := /tmp/kouzui-pod.yml
