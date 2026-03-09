@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, AsyncGenerator
 from typing import Optional, TYPE_CHECKING
 
 import trio
@@ -21,6 +21,68 @@ from peer_messages import (
 from shared_types import PeerAddress, PeerId
 
 logger = logging.getLogger("peer")
+
+
+def _build_handshake(info_hash: bytes, peer_id: PeerId) -> bytes:
+    return b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
+
+
+def _parse_handshake(data: bytes, info_hash: bytes, expected_peer_id: PeerId | None) -> PeerId:
+    if len(data) < 20 + 8 + 20 + 20:
+        raise HandshakeError("Handshake data: wrong length", data)
+    header = data[:20]
+    _reserved_bytes = data[20 : 20 + 8]
+    sha1hash = data[20 + 8 : 20 + 8 + 20]
+    peer_id = data[20 + 8 + 20 : 20 + 8 + 20 + 20]
+    if not (header == b"\x13BitTorrent protocol"):
+        raise HandshakeError("Handshake data: wrong header", header)
+    if not (sha1hash == info_hash):
+        raise HandshakeError("Handshake data: wrong hash", sha1hash)
+    if expected_peer_id:
+        if not expected_peer_id == peer_id:
+            raise HandshakeError("Handshake data: peer_id does not match", peer_id)
+    return peer_id
+
+
+def make_read_fixed_length_machine(length: int) -> Callable[[bytes], tuple[bytes, bytes] | None]:
+    data = b""
+
+    def read_fixed_length_machine(input: bytes) -> tuple[bytes, bytes] | None:
+        nonlocal data
+        if input == b"":
+            raise Exception("EOF")
+        data += input
+        logger.info(f"data = {data!r}, input = {input!r}, len(data) = {len(data)}")
+
+        if len(data) >= length:
+            return data[:length], data[length:]
+        else:
+            return None
+
+    return read_fixed_length_machine
+
+
+def make_message_machine(initial_data: bytes) -> Callable[[bytes], list[tuple[int, bytes]]]:
+    data = initial_data
+
+    def message_machine(input: bytes) -> list[tuple[int, bytes]]:
+        nonlocal data
+        data += input
+        messages: list[tuple[int, bytes]] = []
+        while True:
+            total_length = len(data)
+            if total_length < 4:
+                return messages
+            else:
+                msg_length = int.from_bytes(data[:4], byteorder="big")
+                if total_length < 4 + msg_length:
+                    return messages
+                else:
+                    messages.append((msg_length, data[4 : 4 + msg_length]))
+                    data = data[4 + msg_length :]
+                    logger.debug(f"Parsed message of length {msg_length}")
+
+    return message_machine
 
 
 class PeerStream(object):
@@ -45,52 +107,32 @@ class PeerStream(object):
         self._cfg = cfg
 
     async def receive_handshake(self) -> bytes:
+        read_handshake_data_machine = make_read_fixed_length_machine(68)
         logger.debug(f"Starting to received handshake on {self._stream}")
-        data = None
-        while len(self._msg_data) < 68:
-            data = await self._stream.receive_some(self._cfg.stream_chunk_size)
-            if data == b"":
-                logger.debug(f"empty data in handshake, about to raise EOF from {self._stream}")
-                raise Exception("EOF in handshake")
-            logger.debug(
-                f"Initial incoming handshake data from {self._stream.socket.getpeername()}: {data!r}"
-            )
-            self._msg_data += data
-        handshake_data = self._msg_data[:68]
-        self._msg_data = self._msg_data[68:]
-        logger.debug(f"Final incoming handshake data {data!r}")
-        return handshake_data
-
-    def _parse_msg_data(self) -> list[tuple[int, bytes]]:
-        messages: list[tuple[int, bytes]] = []
-        msg_length = None
         while True:
-            total_length = len(self._msg_data)
-            if total_length < 4:
-                return messages
-            else:
-                msg_length = int.from_bytes(self._msg_data[:4], byteorder="big")
-                if total_length < 4 + msg_length:
-                    return messages
-                else:
-                    messages.append((msg_length, self._msg_data[4 : 4 + msg_length]))
-                    self._msg_data = self._msg_data[4 + msg_length :]
-                    logger.debug(f"Parsed message of length {msg_length} from {self._stream}")
+            next_input = await self._stream.receive_some(self._cfg.stream_chunk_size)
+            logger.info(
+                f"Handshake data from {self._stream.socket.getpeername()}: {next_input!r} {len(next_input)}"
+            )
+            match read_handshake_data_machine(next_input):
+                case None:
+                    continue
+                case (handshake_data, next_data):
+                    self._msg_data = next_data
+                    return handshake_data
 
-    async def receive_message(self) -> list[tuple[int, bytes]]:
+    async def receive_message(self) -> AsyncGenerator[list[tuple[int, bytes]], None]:
+        message_machine = make_message_machine(self._msg_data)
         logger.debug(f"Called receive_message for {self._stream}")
         while True:
-            messages = self._parse_msg_data()
-            if messages:
-                return messages
+            next_input = await self._stream.receive_some(self._cfg.stream_chunk_size)
+            if next_input != b"":
+                logger.debug(f"received_message: Got {len(next_input)} from {self._stream}")
             else:
-                data = await self._stream.receive_some(self._cfg.stream_chunk_size)
-                if data != b"":
-                    logger.debug(f"received_message: Got {len(data)} from {self._stream}")
-                else:
-                    logger.debug(f"empty data, about to raise EOF from {self._stream}")
-                    raise Exception("EOF")
-                self._msg_data += data
+                logger.debug(f"empty data, about to raise EOF from {self._stream}")
+                raise Exception("EOF")
+            messages = message_machine(next_input)
+            yield messages
 
     async def send_message(self, msg: bytes) -> None:
         message_length = len(msg)
@@ -105,7 +147,7 @@ class PeerStream(object):
         logger.debug(f"Sent message of length {message_length} on {self._stream}")
 
     async def send_handshake(self, info_hash: bytes, peer_id: PeerId) -> None:
-        handshake_data = b"\x13BitTorrent protocol" + (b"\0" * 8) + info_hash + peer_id
+        handshake_data = _build_handshake(info_hash, peer_id)
         logger.debug("Sending handshake")
         logger.debug(f"Outgoing handshake = {handshake_data!r}")
         logger.debug(f"Length of outgoing handshake {len(handshake_data)}")
@@ -201,23 +243,9 @@ class PeerEngine(object):
             raise e
 
     async def receive_handshake(self) -> PeerId:
-        # First, receive handshake
         data = await self._peer_stream.receive_handshake()
         logger.debug(f"Handshake data = {data!r}")
-        # Second, validation
-        if len(data) < 20 + 8 + 20 + 20:
-            raise HandshakeError("Handshake data: wrong length", data)
-        header = data[:20]
-        _reserved_bytes = data[20 : 20 + 8]
-        sha1hash = data[20 + 8 : 20 + 8 + 20]
-        peer_id = data[20 + 8 + 20 : 20 + 8 + 20 + 20]
-        if not (header == b"\x13BitTorrent protocol"):
-            raise HandshakeError("Handshake data: wrong header", header)
-        if not (sha1hash == self._info_hash):
-            raise HandshakeError("Handshake data: wrong hash", sha1hash)
-        if self._expected_peer_id:
-            if not self._expected_peer_id == peer_id:
-                raise HandshakeError("Handshake data: peer_id does not match", peer_id)
+        peer_id = _parse_handshake(data, self._info_hash, self._expected_peer_id)
         logger.debug(f"Received handshake from {self._peer_address}/{peer_id!r}")
         return peer_id
 
@@ -228,9 +256,8 @@ class PeerEngine(object):
 
     async def receiving_loop(self) -> None:
         assert self._peer_id is not None
-        while True:
+        async for messages in self._peer_stream.receive_message():
             logging.debug(f"receiving_loop for {self._peer_id!r}")
-            messages = await self._peer_stream.receive_message()
             for length, data in messages:
                 logger.debug(f"Received message of length {length} from {self._peer_id!r}")
                 if length == 0:
