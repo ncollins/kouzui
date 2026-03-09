@@ -14,7 +14,6 @@ from peer_messages import (
     PeerMessage,
     KeepAlive,
     parse_message_with_length,
-    CloseConnectionOrder,
     PeerConnectionStatus,
     PeerHandshakeSuccess,
     PeerConnectionError,
@@ -173,23 +172,19 @@ async def _receiving_loop(
 async def _sending_loop(
     *,
     socket: trio.SocketStream,
-    receive_from_engine: trio.MemoryReceiveChannel[PeerMessage | CloseConnectionOrder],
+    receive_from_engine: trio.MemoryReceiveChannel[PeerMessage],
     token_bucket: token_bucket.TokenBucket | None,
     peer_id: PeerId,
     cfg: Config,
 ) -> None:
     async for msg in insert_keepalive(receive_from_engine, KeepAlive(), cfg.keepalive_seconds):
         logging.debug("sending_loop")
-        match msg:
-            case PeerMessage():
-                logger.debug(f"Pre-send {msg} from {peer_id!r}")
-                data = msg.to_bytes()
-                if token_bucket is not None:
-                    await token_bucket.wait_for_approval(len(data))
-                await socket.send_all(data)
-                logger.debug(f"Sent {msg} from {peer_id!r}")
-            case CloseConnectionOrder():
-                raise Exception(f"{peer_id!r} received {CloseConnectionOrder()}")
+        logger.debug(f"Pre-send {msg} from {peer_id!r}")
+        data = msg.to_bytes()
+        if token_bucket is not None:
+            await token_bucket.wait_for_approval(len(data))
+        await socket.send_all(data)
+        logger.debug(f"Sent {msg} from {peer_id!r}")
 
 
 async def start_peer_engine(
@@ -215,8 +210,8 @@ async def start_peer_engine(
             await _send_handshake(stream, peer_address, info_hash, self_peer_id)
 
         channels: tuple[
-            trio.MemorySendChannel[PeerMessage | CloseConnectionOrder],
-            trio.MemoryReceiveChannel[PeerMessage | CloseConnectionOrder],
+            trio.MemorySendChannel[PeerMessage],
+            trio.MemoryReceiveChannel[PeerMessage],
         ] = trio.open_memory_channel(cfg.internal_queue_size)
         await channel_to_engine.send((peer_id, PeerHandshakeSuccess(peer_channel=channels[0])))
 
