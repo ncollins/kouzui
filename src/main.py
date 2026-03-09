@@ -186,6 +186,14 @@ def test_run_command(
     test(test_dir, torrent_path, number_of_clients, cfg=cfg)
 
 
+@app.command("validate-config")
+def validate_config_command(
+    config_path: Path = typer.Option(..., "--config", help="path to config file (TOML)"),
+) -> None:
+    """Validate a config file"""
+    config.load_config(config_path)
+
+
 def main() -> None:
     app()
 
