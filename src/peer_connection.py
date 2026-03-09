@@ -307,18 +307,16 @@ async def make_standalone(
     logger.debug(f"Starting outgoing peer connection to {peer_address}")
     stream: trio.SocketStream | None = None
     try:
-        stream = await trio.open_tcp_stream(peer_address.ip, peer_address.port)
-        await start_peer_engine(
-            peer_address=peer_address,
-            stream=stream,
-            info_hash=info_hash,
-            self_peer_id=self_peer_id,
-            token_bucket=token_bucket,
-            channel_to_engine=channel_to_engine,
-            initiate=True,
-            cfg=cfg,
-        )
+        async with await trio.open_tcp_stream(peer_address.ip, peer_address.port) as stream:
+            await start_peer_engine(
+                peer_address=peer_address,
+                stream=stream,
+                info_hash=info_hash,
+                self_peer_id=self_peer_id,
+                token_bucket=token_bucket,
+                channel_to_engine=channel_to_engine,
+                initiate=True,
+                cfg=cfg,
+            )
     except Exception as e:  # TODO this might be too general
         logger.warning(f"Failed to maintain peer connection to {peer_address} because of {e}")
-        if stream:
-            await stream.aclose()
