@@ -44,7 +44,7 @@ class PeerStream(object):
         self._token_bucket = token_bucket
         self._cfg = cfg
 
-    async def receive_handshake(self) -> PeerId:
+    async def receive_handshake(self) -> bytes:
         logger.debug(f"Starting to received handshake on {self._stream}")
         data = None
         while len(self._msg_data) < 68:
