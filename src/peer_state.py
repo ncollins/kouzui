@@ -4,7 +4,7 @@ from enum import Enum
 import bitarray
 import trio
 
-from peer_messages import PeerMessage, CloseConnectionOrder
+from peer_messages import PeerMessage
 from shared_types import PeerId
 
 
@@ -24,7 +24,7 @@ class PeerState(object):
         peer_id: PeerId,
         num_pieces: int,
         *,
-        send_channel: trio.MemorySendChannel[PeerMessage | CloseConnectionOrder],
+        send_channel: trio.MemorySendChannel[PeerMessage],
     ) -> None:
         now = datetime.datetime.now()
         pieces = bitarray.bitarray(num_pieces)
@@ -94,7 +94,7 @@ class PeerState(object):
     @property
     def send_channel(
         self,
-    ) -> trio.MemorySendChannel[PeerMessage | CloseConnectionOrder]:
+    ) -> trio.MemorySendChannel[PeerMessage]:
         return self._send_channel
 
     def inc_download_counters(self) -> None:

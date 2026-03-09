@@ -12,7 +12,6 @@ from config import Config
 from peer_messages import (
     PeerMessage,
     parse_message,
-    CloseConnectionOrder,
     PeerConnectionStatus,
     PeerHandshakeSuccess,
     PeerConnectionError,
@@ -156,9 +155,7 @@ class PeerEngine(object):
         self._channel_to_engine: trio.MemorySendChannel[
             tuple[PeerId, PeerConnectionStatus | PeerMessage]
         ] = channel_to_engine
-        self._receive_outgoing_data: Optional[
-            trio.MemoryReceiveChannel[PeerMessage | CloseConnectionOrder]
-        ] = None
+        self._receive_outgoing_data: Optional[trio.MemoryReceiveChannel[PeerMessage]] = None
 
     async def run(self, initiate: bool = True) -> None:
         peer_id = None
@@ -172,8 +169,8 @@ class PeerEngine(object):
                 await self.send_handshake()
 
             channels: tuple[
-                trio.MemorySendChannel[PeerMessage | CloseConnectionOrder],
-                trio.MemoryReceiveChannel[PeerMessage | CloseConnectionOrder],
+                trio.MemorySendChannel[PeerMessage],
+                trio.MemoryReceiveChannel[PeerMessage],
             ] = trio.open_memory_channel(self._cfg.internal_queue_size)
             self._peer_id = peer_id
             self._receive_outgoing_data = channels[1]
@@ -251,7 +248,7 @@ class PeerEngine(object):
         assert self._receive_outgoing_data is not None
         while True:
             logging.debug("sending_loop")
-            msg: None | PeerMessage | CloseConnectionOrder = None
+            msg: None | PeerMessage = None
             with trio.move_on_after(self._cfg.keepalive_seconds):
                 msg = await self._receive_outgoing_data.receive()
             match msg:
@@ -263,8 +260,6 @@ class PeerEngine(object):
                     logger.debug(f"Pre-send {msg} from {self._peer_id!r}")
                     await self._peer_stream.send_message(msg.to_bytes())
                     logger.debug(f"Sent {msg} from {self._peer_id!r}")
-                case CloseConnectionOrder():
-                    raise Exception(f"{self._peer_id!r} received {CloseConnectionOrder()}")
 
 
 async def start_peer_engine(

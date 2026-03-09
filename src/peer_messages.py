@@ -194,18 +194,13 @@ def parse_message(msg: bytes) -> PeerMessage:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class CloseConnectionOrder:
-    pass
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
 class PeerConnectionStatus(abc.ABC):
     pass
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class PeerHandshakeSuccess(PeerConnectionStatus):
-    peer_channel: trio.MemorySendChannel[PeerMessage | CloseConnectionOrder]
+    peer_channel: trio.MemorySendChannel[PeerMessage]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

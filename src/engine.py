@@ -44,7 +44,6 @@ from peer_messages import (
     PeerHandshakeSuccess,
     PeerConnectionShutdown,
     PeerConnectionError,
-    CloseConnectionOrder,
 )
 from peer_state import PeerState
 from shared_types import Block, PeerAddress, PeerId
@@ -338,8 +337,8 @@ class Engine(object):
     ) -> None:
         match connection_status:
             case PeerHandshakeSuccess(peer_channel=peer_channel) if peer_id in self._peers:
-                logger.info(f"{peer_id!r} already exists, sending {CloseConnectionOrder()}")
-                await connection_status.peer_channel.send(CloseConnectionOrder())
+                logger.info(f"{peer_id!r} already exists, closing the channel")
+                await connection_status.peer_channel.aclose()
             case PeerHandshakeSuccess(peer_channel=peer_channel):
                 # Send the Bitfield before adding the peer_id, peer_state to the dictionary
                 # to ensure that it gets sent before any other messages
