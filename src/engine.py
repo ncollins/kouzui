@@ -243,7 +243,8 @@ class Engine(object):
     async def peer_server_loop(self) -> None:
         await trio.serve_tcp(
             peer_connection.make_handler(
-                torrent=self._state,
+                info_hash=self._state.info_hash,
+                self_peer_id=self._state.peer_id,
                 token_bucket=self.token_bucket,
                 channel_to_engine=self._msg_from_peer[0],
                 cfg=self._cfg,
@@ -262,7 +263,8 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 make_standalone = functools.partial(
                     peer_connection.make_standalone,
-                    torrent=self._state,
+                    info_hash=self._state.info_hash,
+                    self_peer_id=self._state.peer_id,
                     token_bucket=self.token_bucket,
                     channel_to_engine=self._msg_from_peer[0],
                     peer_address=address,

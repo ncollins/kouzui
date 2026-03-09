@@ -8,7 +8,6 @@ import trio
 
 if TYPE_CHECKING:
     import token_bucket
-    import torrent
 from config import Config
 from peer_messages import (
     PeerMessage,
@@ -139,7 +138,8 @@ class PeerEngine(object):
         peer_address: PeerAddress,
         expected_peer_id: PeerId | None,
         stream: trio.SocketStream,
-        torrent: torrent.Torrent,
+        info_hash: bytes,
+        self_peer_id: PeerId,
         token_bucket: token_bucket.TokenBucket | None,
         channel_to_engine: trio.MemorySendChannel[
             tuple[PeerId, PeerConnectionStatus | PeerMessage]
@@ -151,7 +151,8 @@ class PeerEngine(object):
         self._expected_peer_id: PeerId | None = expected_peer_id
         self._peer_id: Optional[PeerId] = None
         self._peer_stream: PeerStream = PeerStream(stream, token_bucket, cfg=self._cfg)
-        self._tstate = torrent
+        self._info_hash = info_hash
+        self._self_peer_id = self_peer_id
         self._channel_to_engine: trio.MemorySendChannel[
             tuple[PeerId, PeerConnectionStatus | PeerMessage]
         ] = channel_to_engine
@@ -212,7 +213,7 @@ class PeerEngine(object):
         peer_id = data[20 + 8 + 20 : 20 + 8 + 20 + 20]
         if not (header == b"\x13BitTorrent protocol"):
             raise HandshakeError("Handshake data: wrong header", header)
-        if not (sha1hash == self._tstate.info_hash):
+        if not (sha1hash == self._info_hash):
             raise HandshakeError("Handshake data: wrong hash", sha1hash)
         if self._expected_peer_id:
             if not self._expected_peer_id == peer_id:
@@ -222,7 +223,7 @@ class PeerEngine(object):
 
     async def send_handshake(self) -> None:
         # Handshake
-        await self._peer_stream.send_handshake(self._tstate.info_hash, self._tstate.peer_id)
+        await self._peer_stream.send_handshake(self._info_hash, self._self_peer_id)
         logger.debug(f"Sent handshake to {self._peer_address}")
 
     async def receiving_loop(self) -> None:
@@ -270,7 +271,8 @@ async def start_peer_engine(
     *,
     peer_address: PeerAddress,
     stream: trio.SocketStream,
-    torrent: torrent.Torrent,
+    info_hash: bytes,
+    self_peer_id: PeerId,
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
     initiate: bool = True,
@@ -283,7 +285,8 @@ async def start_peer_engine(
         peer_address=peer_address,
         expected_peer_id=None,
         stream=stream,
-        torrent=torrent,
+        info_hash=info_hash,
+        self_peer_id=self_peer_id,
         token_bucket=token_bucket,
         channel_to_engine=channel_to_engine,
         cfg=cfg,
@@ -293,7 +296,8 @@ async def start_peer_engine(
 
 def make_handler(
     *,
-    torrent: torrent.Torrent,
+    info_hash: bytes,
+    self_peer_id: PeerId,
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
     cfg: Config,
@@ -311,7 +315,8 @@ def make_handler(
             await start_peer_engine(
                 peer_address=peer_address,
                 stream=stream,
-                torrent=torrent,
+                info_hash=info_hash,
+                self_peer_id=self_peer_id,
                 token_bucket=token_bucket,
                 channel_to_engine=channel_to_engine,
                 initiate=False,
@@ -327,7 +332,8 @@ def make_handler(
 
 async def make_standalone(
     *,
-    torrent: torrent.Torrent,
+    info_hash: bytes,
+    self_peer_id: PeerId,
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
     peer_address: PeerAddress,
@@ -340,7 +346,8 @@ async def make_standalone(
         await start_peer_engine(
             peer_address=peer_address,
             stream=stream,
-            torrent=torrent,
+            info_hash=info_hash,
+            self_peer_id=self_peer_id,
             token_bucket=token_bucket,
             channel_to_engine=channel_to_engine,
             initiate=True,
