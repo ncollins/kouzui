@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, AsyncGenerator
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TypeVar, TYPE_CHECKING
 
 import trio
 
@@ -11,7 +11,8 @@ if TYPE_CHECKING:
 from config import Config
 from peer_messages import (
     PeerMessage,
-    parse_message,
+    KeepAlive,
+    parse_message_with_length,
     CloseConnectionOrder,
     PeerConnectionStatus,
     PeerHandshakeSuccess,
@@ -21,6 +22,29 @@ from peer_messages import (
 from shared_types import PeerAddress, PeerId
 
 logger = logging.getLogger("peer")
+
+X = TypeVar("X")
+K = TypeVar("K")
+
+
+async def insert_keepalive(
+    channel: trio.MemoryReceiveChannel[X], keepalive_value: K, seconds: int
+) -> AsyncGenerator[X | K, None]:
+    msg: X | None = None
+    while True:
+        with trio.move_on_after(seconds):
+            msg = await channel.receive()
+        match msg:
+            case None:
+                yield keepalive_value
+            case msg:
+                yield msg
+
+
+def _to_bytes_with_length(p: PeerMessage) -> bytes:
+    payload = p.to_bytes()
+    length_header = len(payload).to_bytes(4, byteorder="big")
+    return length_header + payload
 
 
 def _build_handshake(info_hash: bytes, peer_id: PeerId) -> bytes:
@@ -62,25 +86,18 @@ def make_read_fixed_length_machine(length: int) -> Callable[[bytes], tuple[bytes
     return read_fixed_length_machine
 
 
-def make_message_machine(initial_data: bytes) -> Callable[[bytes], list[tuple[int, bytes]]]:
+def make_message_machine(initial_data: bytes) -> Callable[[bytes], list[PeerMessage]]:
     data = initial_data
 
-    def message_machine(input: bytes) -> list[tuple[int, bytes]]:
+    def message_machine(input: bytes) -> list[PeerMessage]:
         nonlocal data
         data += input
-        messages: list[tuple[int, bytes]] = []
-        while True:
-            total_length = len(data)
-            if total_length < 4:
-                return messages
-            else:
-                msg_length = int.from_bytes(data[:4], byteorder="big")
-                if total_length < 4 + msg_length:
-                    return messages
-                else:
-                    messages.append((msg_length, data[4 : 4 + msg_length]))
-                    data = data[4 + msg_length :]
-                    logger.debug(f"Parsed message of length {msg_length}")
+        messages: list[PeerMessage] = []
+        while (parsed_message := parse_message_with_length(data)) is not None:
+            msg, remaining_data = parsed_message
+            data = remaining_data
+            messages.append(msg)
+        return messages
 
     return message_machine
 
@@ -121,7 +138,7 @@ class PeerStream(object):
                     self._msg_data = next_data
                     return handshake_data
 
-    async def receive_message(self) -> AsyncGenerator[list[tuple[int, bytes]], None]:
+    async def receive_message(self) -> AsyncGenerator[list[PeerMessage], None]:
         message_machine = make_message_machine(self._msg_data)
         logger.debug(f"Called receive_message for {self._stream}")
         while True:
@@ -134,17 +151,15 @@ class PeerStream(object):
             messages = message_machine(next_input)
             yield messages
 
-    async def send_message(self, msg: bytes) -> None:
-        message_length = len(msg)
-        data = message_length.to_bytes(4, byteorder="big") + msg
-        logger.debug(f"Pre-send message of length {message_length} on {self._stream}")
+    async def send_message(self, msg: PeerMessage) -> None:
+        data = _to_bytes_with_length(msg)
+        logger.debug(
+            f"Pre-send message of length {len(data)} (includes 4 bytes for length) on {self._stream}"
+        )
         if self._token_bucket is not None:
-            # TODO 2026-03-04: consider moving this into a single call to the token bucket
-            while not self._token_bucket.check_and_decrement(len(data)):
-                logger.debug("Token bucket is empty waiting 0.1s")
-                await trio.sleep(self._token_bucket.update_period)
+            await self._token_bucket.wait_for_approval(len(data))
         await self._stream.send_all(data)
-        logger.debug(f"Sent message of length {message_length} on {self._stream}")
+        logger.debug(f"Sent message of length {len(data)} on {self._stream}")
 
     async def send_handshake(self, info_hash: bytes, peer_id: PeerId) -> None:
         handshake_data = _build_handshake(info_hash, peer_id)
@@ -153,10 +168,6 @@ class PeerStream(object):
         logger.debug(f"Length of outgoing handshake {len(handshake_data)}")
         await self._stream.send_all(handshake_data)
         logger.debug("Sent handshake")
-
-    async def send_keepalive(self) -> None:
-        data = (0).to_bytes(4, byteorder="big")
-        await self._stream.send_all(data)
 
 
 class HandshakeError(Exception):
@@ -258,37 +269,29 @@ class PeerEngine(object):
         assert self._peer_id is not None
         async for messages in self._peer_stream.receive_message():
             logging.debug(f"receiving_loop for {self._peer_id!r}")
-            for length, data in messages:
-                logger.debug(f"Received message of length {length} from {self._peer_id!r}")
-                if length == 0:
-                    # keepalive message
-                    pass
-                else:
-                    peer_message = parse_message(data)
-                    logger.debug("Putting message in queue for engine")
-                    await self._channel_to_engine.send(
-                        (
-                            self._peer_id,
-                            peer_message,
+            for msg in messages:
+                match msg:
+                    case KeepAlive():
+                        pass
+                    case _:
+                        await self._channel_to_engine.send(
+                            (
+                                self._peer_id,
+                                msg,
+                            )
                         )
-                    )
 
     async def sending_loop(self) -> None:
         assert self._peer_id is not None
         assert self._receive_outgoing_data is not None
-        while True:
+        async for msg in insert_keepalive(
+            self._receive_outgoing_data, KeepAlive(), self._cfg.keepalive_seconds
+        ):
             logging.debug("sending_loop")
-            msg: None | PeerMessage | CloseConnectionOrder = None
-            with trio.move_on_after(self._cfg.keepalive_seconds):
-                msg = await self._receive_outgoing_data.receive()
             match msg:
-                case None:
-                    logger.debug(f"Pre-send KEEPALIVE to {self._peer_id!r}")
-                    await self._peer_stream.send_keepalive()
-                    logger.debug(f"Sent KEEPALIVE to {self._peer_id!r}")
                 case PeerMessage():
                     logger.debug(f"Pre-send {msg} from {self._peer_id!r}")
-                    await self._peer_stream.send_message(msg.to_bytes())
+                    await self._peer_stream.send_message(msg)
                     logger.debug(f"Sent {msg} from {self._peer_id!r}")
                 case CloseConnectionOrder():
                     raise Exception(f"{self._peer_id!r} received {CloseConnectionOrder()}")

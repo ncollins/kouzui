@@ -30,18 +30,23 @@ class TokenBucket(object):
         self.updates_per_second = updates_per_second
 
     @property
-    def update_period(self) -> float:
+    def _update_period(self) -> float:
         return 1.0 / self.updates_per_second
 
-    def check_and_decrement(self, packet_size: int) -> bool:
+    def _check_and_decrement(self, packet_size: int) -> bool:
         if self.bucket >= packet_size:
             self.bucket -= packet_size
             return True
         else:
             return False
 
+    async def wait_for_approval(self, packet_size: int) -> None:
+        while not self._check_and_decrement(packet_size):
+            logger.debug("Token bucket is empty waiting, waiting for {self.update_period}s")
+            await trio.sleep(self._update_period)
+
     async def loop(self) -> None:
         while True:
-            await trio.sleep(self.update_period)
+            await trio.sleep(self._update_period)
             increment = self.bytes_per_second / self.updates_per_second
             self.bucket = min(self.bucket + increment, self.max_size_in_bytes)

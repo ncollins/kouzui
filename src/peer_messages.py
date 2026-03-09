@@ -131,6 +131,13 @@ class Cancel(PeerMessage):
         return raw_msg
 
 
+class KeepAlive(PeerMessage):
+    pass
+
+    def to_bytes(self) -> bytes:
+        return b""
+
+
 def _parse_have(s: bytes) -> int:
     return int.from_bytes(s[:4], byteorder="big")
 
@@ -159,7 +166,20 @@ def _parse_piece(s: bytes) -> tuple[int, int, bytes]:
     return (index, begin, data)
 
 
+def parse_message_with_length(data: bytes) -> tuple[PeerMessage, bytes] | None:
+    if len(data) < 4:
+        return None
+    else:
+        msg_length = int.from_bytes(data[:4], byteorder="big")
+        if len(data) < 4 + msg_length:
+            return None
+        else:
+            return parse_message(data[4 : 4 + msg_length]), data[4 + msg_length :]
+
+
 def parse_message(msg: bytes) -> PeerMessage:
+    if len(msg) == 0:
+        return KeepAlive()
     msg_type = msg[0]
     msg_payload = msg[1:]
     match msg_type:
