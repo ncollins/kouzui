@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "bitarray==3.8.0",
     "h11==0.16.0",
+    "pydantic>=2.12.5",
     "pytest>=9.0.2",
     "trio==0.32.0",
     "typer>=0.24.1",
@@ -17,7 +18,9 @@ kouzui = "main:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.151.9",
     "mypy>=1.19.1",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.4",
     "ty>=0.0.19",
 ]
