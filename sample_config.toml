@@ -1,0 +1,9 @@
+default_listening_port = 50881
+stream_chunk_size = 8192
+block_size = 8192
+internal_queue_size = 100
+max_outstanding_requests_per_peer = 30
+keepalive_seconds = 115
+num_unchoked_peers = 4
+delete_stale_requests_seconds = 600
+max_outgoing_bytes_per_second = 6291456

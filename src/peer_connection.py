@@ -9,7 +9,7 @@ import trio
 if TYPE_CHECKING:
     import token_bucket
     import torrent
-import config
+from config import Config
 from peer_messages import (
     PeerMessage,
     parse_message,
@@ -20,8 +20,6 @@ from peer_messages import (
     PeerConnectionShutdown,
 )
 from shared_types import PeerAddress, PeerId
-
-from config import STREAM_CHUNK_SIZE, KEEPALIVE_SECONDS
 
 logger = logging.getLogger("peer")
 
@@ -36,17 +34,22 @@ class PeerStream(object):
     """
 
     def __init__(
-        self, stream: trio.SocketStream, token_bucket: token_bucket.TokenBucket | None = None
+        self,
+        stream: trio.SocketStream,
+        token_bucket: token_bucket.TokenBucket | None = None,
+        *,
+        cfg: Config,
     ):
         self._stream: trio.SocketStream = stream
         self._msg_data: bytes = b""
         self._token_bucket = token_bucket
+        self._cfg = cfg
 
     async def receive_handshake(self) -> PeerId:
         logger.debug(f"Starting to received handshake on {self._stream}")
         data = None
         while len(self._msg_data) < 68:
-            data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+            data = await self._stream.receive_some(self._cfg.stream_chunk_size)
             if data == b"":
                 logger.debug(f"empty data in handshake, about to raise EOF from {self._stream}")
                 raise Exception("EOF in handshake")
@@ -82,7 +85,7 @@ class PeerStream(object):
             if messages:
                 return messages
             else:
-                data = await self._stream.receive_some(STREAM_CHUNK_SIZE)
+                data = await self._stream.receive_some(self._cfg.stream_chunk_size)
                 if data != b"":
                     logger.debug(f"received_message: Got {len(data)} from {self._stream}")
                 else:
@@ -141,11 +144,13 @@ class PeerEngine(object):
         channel_to_engine: trio.MemorySendChannel[
             tuple[PeerId, PeerConnectionStatus | PeerMessage]
         ],
+        cfg: Config,
     ):
+        self._cfg = cfg
         self._peer_address: PeerAddress = peer_address
         self._expected_peer_id: PeerId | None = expected_peer_id
         self._peer_id: Optional[PeerId] = None
-        self._peer_stream: PeerStream = PeerStream(stream, token_bucket)
+        self._peer_stream: PeerStream = PeerStream(stream, token_bucket, cfg=self._cfg)
         self._tstate = torrent
         self._channel_to_engine: trio.MemorySendChannel[
             tuple[PeerId, PeerConnectionStatus | PeerMessage]
@@ -168,7 +173,7 @@ class PeerEngine(object):
             channels: tuple[
                 trio.MemorySendChannel[PeerMessage | CloseConnectionOrder],
                 trio.MemoryReceiveChannel[PeerMessage | CloseConnectionOrder],
-            ] = trio.open_memory_channel(config.INTERNAL_QUEUE_SIZE)
+            ] = trio.open_memory_channel(self._cfg.internal_queue_size)
             self._peer_id = peer_id
             self._receive_outgoing_data = channels[1]
             await self._channel_to_engine.send(
@@ -246,7 +251,7 @@ class PeerEngine(object):
         while True:
             logging.debug("sending_loop")
             msg: None | PeerMessage | CloseConnectionOrder = None
-            with trio.move_on_after(KEEPALIVE_SECONDS):
+            with trio.move_on_after(self._cfg.keepalive_seconds):
                 msg = await self._receive_outgoing_data.receive()
             match msg:
                 case None:
@@ -269,6 +274,7 @@ async def start_peer_engine(
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
     initiate: bool = True,
+    cfg: Config,
 ) -> None:
     """
     Find (or create) queues for relevant stream, and create PeerEngine.
@@ -280,6 +286,7 @@ async def start_peer_engine(
         torrent=torrent,
         token_bucket=token_bucket,
         channel_to_engine=channel_to_engine,
+        cfg=cfg,
     )
     await peer_engine.run(initiate=initiate)
 
@@ -289,6 +296,7 @@ def make_handler(
     torrent: torrent.Torrent,
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
+    cfg: Config,
 ) -> Callable[[trio.SocketStream], Awaitable[None]]:
     async def handler(stream: trio.SocketStream) -> None:
         peer_address = None
@@ -307,6 +315,7 @@ def make_handler(
                 token_bucket=token_bucket,
                 channel_to_engine=channel_to_engine,
                 initiate=False,
+                cfg=cfg,
             )
         except Exception as e:  # TODO this might be too general
             logger.warning(
@@ -322,6 +331,7 @@ async def make_standalone(
     token_bucket: token_bucket.TokenBucket | None,
     channel_to_engine: trio.MemorySendChannel[tuple[PeerId, PeerConnectionStatus | PeerMessage]],
     peer_address: PeerAddress,
+    cfg: Config,
 ) -> None:
     logger.debug(f"Starting outgoing peer connection to {peer_address}")
     stream: trio.SocketStream | None = None
@@ -334,6 +344,7 @@ async def make_standalone(
             token_bucket=token_bucket,
             channel_to_engine=channel_to_engine,
             initiate=True,
+            cfg=cfg,
         )
     except Exception as e:  # TODO this might be too general
         logger.warning(f"Failed to maintain peer connection to {peer_address} because of {e}")

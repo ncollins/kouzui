@@ -45,7 +45,7 @@ spec:
             echo "Waiting for tracker..."
             sleep 1
           done
-          exec uv run python src/main.py run /test_data/test.torrent --download-dir /test_data/clients/client-3/ --listening-port 51234 --log-level INFO  --auto-shutdown
+          exec uv run python src/main.py run /test_data/test.torrent --download-dir /test_data/clients/client-3/ --listening-port 51234 --log-level INFO  --auto-shutdown --config ./sample_config.toml
       volumeMounts:
         - name: test-data
           mountPath: /test_data

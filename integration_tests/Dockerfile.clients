@@ -11,6 +11,7 @@ RUN uv sync --frozen --no-dev
 
 # Copy source code
 COPY src/ ./src/
+COPY sample_config.toml ./sample_config.toml
 
 # Test data (torrent file + partial files) is mounted at /test_data at runtime
 CMD ["uv", "run", "python", "src/main.py"]

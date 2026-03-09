@@ -7,9 +7,11 @@ import trio
 
 import http_stream
 
+from config import _DEFAULT_CONFIG
+
 
 async def handler(stream: trio.SocketStream) -> None:
-    h = http_stream.HttpStream(stream, h11.SERVER)
+    h = http_stream.HttpStream(stream, h11.SERVER, cfg=_DEFAULT_CONFIG)
 
     # valid events are:
     # - Request

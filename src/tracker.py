@@ -4,6 +4,7 @@ from urllib import parse
 import h11
 import trio
 
+from config import Config
 import torrent
 import http_stream
 
@@ -50,7 +51,7 @@ def tracker_request(torrent: torrent.Torrent, event: bytes | None) -> h11.Reques
     return r
 
 
-async def query(torrent: torrent.Torrent, event: bytes | None) -> bytes:
+async def query(torrent: torrent.Torrent, event: bytes | None, *, cfg: Config) -> bytes:
     url: bytes = torrent.tracker_address
     port: int = torrent.tracker_port
     logger.debug(f"url/port = {url!r}/{port}")
@@ -58,7 +59,7 @@ async def query(torrent: torrent.Torrent, event: bytes | None) -> bytes:
         url.decode("ascii"), port
     )  # TODO fix hack with string/bytes issue
     logger.debug("Opened raw stream")
-    h = http_stream.HttpStream(stream, h11.CLIENT)
+    h = http_stream.HttpStream(stream, h11.CLIENT, cfg=cfg)
     logger.debug("Created HttpStream")
 
     await h.send_event(tracker_request(torrent, event))
