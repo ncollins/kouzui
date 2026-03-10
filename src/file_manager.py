@@ -26,14 +26,12 @@ def _create_empty_file(path: Path, torrent_info: torrent.TorrentInfo) -> None:
 
 
 class FileWrapper(object):
-    def __init__(self, *, torrent_info: torrent.TorrentInfo, file_suffix: str = "") -> None:
+    def __init__(
+        self, *, torrent_info: torrent.TorrentInfo, file_path: Path, file_suffix: str = ""
+    ) -> None:
         self._torrent_info = torrent_info
-        self._tmp_path = (
-            torrent_info.file_path.parent / f"{torrent_info.file_path.name}{file_suffix}.part"
-        )
-        self._final_path = (
-            torrent_info.file_path.parent / f"{torrent_info.file_path.name}{file_suffix}"
-        )
+        self._tmp_path = file_path.parent / f"{file_path.name}{file_suffix}.part"
+        self._final_path = file_path.parent / f"{file_path.name}{file_suffix}"
         self._file_path: Path | None = None
         self._file_handle: io.BufferedReader | io.BufferedRandom | None = None
 

@@ -32,7 +32,7 @@ logger = logging.getLogger("torrent")
 # 'length' and 'path' keys
 
 
-PieceInfo = NamedTuple("PieceInfo", [("file", Path), ("index", int), ("sha1hash", bytes)])
+PieceInfo = NamedTuple("PieceInfo", [("index", int), ("sha1hash", bytes)])
 
 
 def _random_char() -> str:
@@ -68,7 +68,7 @@ def _parse_pieces(bstring: bytes) -> list[bytes]:
 
 @dataclass(frozen=True, kw_only=True)
 class TorrentInfo:
-    file_path: Path
+    torrent_name: str
     info_hash: bytes
     interval: int
     tracker_address: bytes
@@ -95,6 +95,7 @@ class TorrentState:
     uploaded: int = 0
     downloaded: int = 0
     left: int
+    file_path: Path
     listening_port: int
     peer_id: PeerId
     completed_pieces: bitarray.bitarray
@@ -103,8 +104,6 @@ class TorrentState:
 def parse_torrent_dict(
     tdict: OrderedDict[bytes, Any],
     info_string: bytes,
-    directory: Path,
-    custom_name: str | None = None,
 ) -> TorrentInfo:
     info_hash = hashlib.sha1(info_string).digest()
     piece_size = int(tdict[b"info"][b"piece length"])
@@ -113,15 +112,8 @@ def parse_torrent_dict(
         raise Exception("multi-file torrents not yet supported")
 
     torrent_name = bytes.decode(tdict[b"info"][b"name"])
-    if custom_name:
-        file_path = directory / custom_name
-    else:
-        file_path = directory / torrent_name
 
-    pieces = [
-        PieceInfo(file_path, i, sha1)
-        for i, sha1 in enumerate(_parse_pieces(tdict[b"info"][b"pieces"]))
-    ]
+    pieces = [PieceInfo(i, sha1) for i, sha1 in enumerate(_parse_pieces(tdict[b"info"][b"pieces"]))]
 
     file_length = int(tdict[b"info"][b"length"])
     num_pieces = len(pieces)
@@ -139,7 +131,7 @@ def parse_torrent_dict(
     )
 
     return TorrentInfo(
-        file_path=file_path,
+        torrent_name=torrent_name,
         info_hash=info_hash,
         interval=100,
         tracker_address=tracker_address,

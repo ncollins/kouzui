@@ -60,8 +60,8 @@ def run(
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
     port = listening_port if listening_port else cfg.default_listening_port
-    t = parse_torrent_dict(torrent_data, torrent_info, download_dir)
-    engine.run(t, listening_port=port, auto_shutdown=auto_shutdown, cfg=cfg)
+    t = parse_torrent_dict(torrent_data, torrent_info)
+    engine.run(t, directory=download_dir, listening_port=port, auto_shutdown=auto_shutdown, cfg=cfg)
 
 
 def make_test_files(
@@ -70,12 +70,15 @@ def make_test_files(
     download_dir: Path,
     number_of_files: int,
 ) -> None:
-    t = parse_torrent_dict(torrent_data, torrent_info, download_dir)
+    t = parse_torrent_dict(torrent_data, torrent_info)
+    base_path = download_dir / t.torrent_name
     files = []
-    main_file_wrapper = file_manager.FileWrapper(torrent_info=t, file_suffix="")
+    main_file_wrapper = file_manager.FileWrapper(
+        torrent_info=t, file_path=base_path, file_suffix=""
+    )
     main_file_wrapper.create_file_or_return_hashes()
     for i in range(number_of_files):
-        fw = file_manager.FileWrapper(torrent_info=t, file_suffix=f".{i}")
+        fw = file_manager.FileWrapper(torrent_info=t, file_path=base_path, file_suffix=f".{i}")
         fw.create_file_or_return_hashes()
         files.append(fw)
     for p in t.pieces:
@@ -87,15 +90,13 @@ def make_test_files(
 def test(test_dir: Path, torrent_file: Path, number_of_clients: int, *, cfg: config.Config) -> None:
     # TODO separate timing of file copy and torrenting
     start_time = time.perf_counter()
-    torrent_data, _torrent_info = read_torrent_file(torrent_file)
+    torrent_data, torrent_info_bytes = read_torrent_file(torrent_file)
+    torrent_name = parse_torrent_dict(torrent_data, torrent_info_bytes).torrent_name
     # ----- RUN CLIENTS ----------------
     client_processes: list[tuple[mp.Process, Path, Path]] = []
     for i in range(number_of_clients):
         client_dir = test_dir / "clients" / f"client-{i}"
         client_dir.mkdir(exist_ok=True, parents=True)
-
-        # TODO tidy up potential torrent_name, custom_name issues
-        torrent_name = bytes.decode(torrent_data[b"info"][b"name"])
         test_file = test_dir / f"{torrent_name}.{i}.part"
         tmp_file = client_dir / f"{torrent_name}.part"
         final_file = client_dir / torrent_name

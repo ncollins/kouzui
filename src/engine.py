@@ -5,6 +5,7 @@ import hashlib
 import io
 import logging
 import math
+from pathlib import Path
 import random
 from enum import StrEnum
 from typing import Any
@@ -527,20 +528,28 @@ class Engine(object):
 
 
 def run(
-    torrent_info: TorrentInfo, *, listening_port: int, cfg: Config, auto_shutdown: bool
+    torrent_info: TorrentInfo,
+    *,
+    directory: Path,
+    listening_port: int,
+    cfg: Config,
+    auto_shutdown: bool,
 ) -> None:
     try:
         completed_pieces = bitarray.bitarray(torrent_info.num_pieces)
         completed_pieces.setall(False)
         torrent_state = TorrentState(
             left=torrent_info.file_length,
+            file_path=directory / torrent_info.torrent_name,
             listening_port=listening_port,
             peer_id=generate_peer_id(),
             completed_pieces=completed_pieces,
         )
 
         # create FileManager and check hashes if file already exists
-        file_wrapper = file_manager.FileWrapper(torrent_info=torrent_info)
+        file_wrapper = file_manager.FileWrapper(
+            torrent_info=torrent_info, file_path=torrent_state.file_path
+        )
         existing_hashes = file_wrapper.create_file_or_return_hashes()
 
         if existing_hashes:
