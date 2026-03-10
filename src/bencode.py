@@ -1,8 +1,11 @@
 # encode and decode the Bittorrent serialization format
 # http://www.bittorrent.org/beps/bep_0003.html
 
-import collections
-from typing import Any, BinaryIO
+from collections import OrderedDict
+from typing import Any, BinaryIO, TypeAlias
+
+BencodeDict: TypeAlias = OrderedDict[bytes, Any]
+BencodeValue: TypeAlias = int | bytes | list[Any] | BencodeDict
 
 
 def parse_string_length(s: BinaryIO, i: bytes = b"") -> int:
@@ -45,18 +48,19 @@ def parse_list(s: BinaryIO) -> list[Any]:
             xs.append(v)
 
 
-def parse_dict(s: BinaryIO) -> dict[bytes, Any]:
-    d: dict = collections.OrderedDict()
+def parse_dict(s: BinaryIO) -> BencodeDict:
+    d: BencodeDict = OrderedDict()
     while True:
         k = parse_value(s)
         if k is None:
             return d
         else:
+            assert isinstance(k, bytes)
             v = parse_value(s)
             d[k] = v
 
 
-def parse_value(s: BinaryIO) -> int | bytes | list[Any] | dict[bytes, Any] | None:
+def parse_value(s: BinaryIO) -> BencodeValue | None:
     # `s` is a string stream object
     # look at first character
     # digit -> string

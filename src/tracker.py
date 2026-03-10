@@ -1,11 +1,10 @@
-import collections
 import logging
-from typing import Any
 from urllib import parse
 
 import h11
 import trio
 
+from bencode import BencodeDict
 from config import Config
 import torrent
 import http_stream
@@ -38,7 +37,7 @@ def _replace_ipv6_lookback_with_localhost(address: PeerAddress) -> PeerAddress:
 
 
 def parse_peers(
-    data: bytes | list[collections.OrderedDict[bytes, Any]], *, listening_port: int
+    data: bytes | list[BencodeDict], *, listening_port: int
 ) -> list[tuple[PeerAddress, PeerId | None]]:
     peer_list: list[tuple[PeerAddress, PeerId | None]] = []
     match data:
