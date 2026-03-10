@@ -36,6 +36,9 @@ integration-test:
 	echo "single client result = $$result_single_client, multi client result = $$result_multi_client" ;\
 	uv run integration_tests/test_data.py verify-complete-files integration_tests/test_data test_file.bin
 
+integration-test-stop:
+	podman kube down $(POD_MANIFEST_TMP);
+
 unit-test:
 	uv run pytest .
 
