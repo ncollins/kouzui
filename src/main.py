@@ -14,7 +14,7 @@ import bencode
 import config
 import engine
 import file_manager
-from torrent import Torrent
+from torrent import parse_torrent_dict
 
 logger = logging.getLogger("main")
 
@@ -60,7 +60,7 @@ def run(
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
     port = int(listening_port) if listening_port else None
-    t = Torrent(torrent_data, torrent_info, download_dir, port, cfg=cfg)
+    t = parse_torrent_dict(torrent_data, torrent_info, download_dir, port, cfg=cfg)
     engine.run(t, auto_shutdown=auto_shutdown, cfg=cfg)
 
 
@@ -71,15 +71,15 @@ def make_test_files(
     number_of_files: int,
     cfg: config.Config,
 ) -> None:
-    t = Torrent(torrent_data, torrent_info, download_dir, None, cfg=cfg)
+    t = parse_torrent_dict(torrent_data, torrent_info, download_dir, None, cfg=cfg)
     files = []
-    main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
+    main_file_wrapper = file_manager.FileWrapper(torrent_info=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
     for i in range(number_of_files):
-        fw = file_manager.FileWrapper(torrent=t, file_suffix=f".{i}")
+        fw = file_manager.FileWrapper(torrent_info=t, file_suffix=f".{i}")
         fw.create_file_or_return_hashes()
         files.append(fw)
-    for p in t._pieces:
+    for p in t.pieces:
         data = main_file_wrapper.read_block(p.index, 0, t.piece_length(p.index))
         if p.sha1hash == hashlib.sha1(data).digest():
             random.choice(files).write_piece(p.index, data)

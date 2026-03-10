@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     import bitarray
     from peer_state import PeerState
     from shared_types import PeerId
-    from torrent import Torrent
+    from torrent import TorrentInfo, TorrentState
 
 CGREEN = "\33[32m"
 CBLUE = "\33[34m"
@@ -78,11 +78,15 @@ def pretty_print(
         print(line)
 
 
-def print_peers(torrent: Torrent, peers: dict[PeerId, PeerState]) -> None:
+def print_peers(
+    torrent_info: TorrentInfo, torrent_state: TorrentState, peers: dict[PeerId, PeerState]
+) -> None:
     terminal_info = shutil.get_terminal_size()
     width = terminal_info.columns
     print(chr(27) + "[2J")
-    pretty_print(width, torrent.peer_id + b" (self)", torrent._complete, None, None)
+    pretty_print(
+        width, torrent_state.peer_id + b" (self)", torrent_state.completed_pieces, None, None
+    )
     for _, p_state in sorted(peers.items())[:4]:
         pretty_print(
             width,

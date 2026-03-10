@@ -5,7 +5,7 @@ from pathlib import Path
 
 import trio
 
-import torrent as tstate
+import torrent
 from internal_messages import (
     AllPiecesWritten,
     BlockToRead,
@@ -18,18 +18,22 @@ from shared_types import PeerId
 logger = logging.getLogger("file_manager")
 
 
-def _create_empty_file(path: Path, torrent: tstate.Torrent) -> None:
+def _create_empty_file(path: Path, torrent_info: torrent.TorrentInfo) -> None:
     with path.open("wb") as f:
-        for i in range(torrent._num_pieces):  # TODO remove private property access
-            b = bytes(torrent.piece_length(i))
+        for i in range(torrent_info.num_pieces):
+            b = bytes(torrent_info.piece_length(i))
             f.write(b)
 
 
 class FileWrapper(object):
-    def __init__(self, *, torrent: tstate.Torrent, file_suffix: str = "") -> None:
-        self._torrent = torrent
-        self._tmp_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}.part"
-        self._final_path = torrent.file_path.parent / f"{torrent.file_path.name}{file_suffix}"
+    def __init__(self, *, torrent_info: torrent.TorrentInfo, file_suffix: str = "") -> None:
+        self._torrent_info = torrent_info
+        self._tmp_path = (
+            torrent_info.file_path.parent / f"{torrent_info.file_path.name}{file_suffix}.part"
+        )
+        self._final_path = (
+            torrent_info.file_path.parent / f"{torrent_info.file_path.name}{file_suffix}"
+        )
         self._file_path: Path | None = None
         self._file_handle: io.BufferedReader | io.BufferedRandom | None = None
 
@@ -46,29 +50,29 @@ class FileWrapper(object):
         try:
             self._file_handle = self._file_path.open("rb")
             hashes = []
-            for i, _ in enumerate(self._torrent._complete):
-                piece_length = self._torrent.piece_length(i)
+            for i in range(self._torrent_info.num_pieces):
+                piece_length = self._torrent_info.piece_length(i)
                 p = self.read_block(i, 0, piece_length)
                 h = hashlib.sha1(p).digest()
                 hashes.append(h)
             self._file_handle.close()
             logger.info("found file and calculated existing hashes")
         except FileNotFoundError:
-            _create_empty_file(self._file_path, self._torrent)  # TODO don't read private property
+            _create_empty_file(self._file_path, self._torrent_info)
             logger.info(f"created empty file at {self._file_path}")
             hashes = None
         self._file_handle = open(self._file_path, "rb+")
         return hashes
 
     def write_piece(self, index: int, piece: bytes) -> None:
-        start = index * self._torrent._piece_length  # TODO
+        start = index * self._torrent_info.piece_size
         assert self._file_handle is not None
         self._file_handle.seek(start)
         self._file_handle.write(piece)
         self._file_handle.flush()
 
     def read_block(self, index: int, begin: int, length: int) -> bytes:
-        start = index * self._torrent._piece_length + begin
+        start = index * self._torrent_info.piece_size + begin
         assert self._file_handle is not None
         self._file_handle.seek(start)
         block = self._file_handle.read(length)
