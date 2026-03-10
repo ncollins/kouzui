@@ -85,53 +85,34 @@ class FileWrapper(object):
             self._file_handle = self._file_path.open("rb+")
 
 
-class FileManager(object):
-    def __init__(
-        self,
-        *,
-        file_wrapper: FileWrapper,
-        pieces_to_write: trio.MemoryReceiveChannel[CompletePieceToWrite | AllPiecesWritten],
-        write_confirmations: trio.MemorySendChannel[WriteConfirmation],
-        blocks_to_read: trio.MemoryReceiveChannel[BlockToRead],
-        pieces_to_send: trio.MemorySendChannel[tuple[PeerId, Piece]],
-    ) -> None:
-        self._file_wrapper = file_wrapper
-        self._pieces_to_write = pieces_to_write
-        self._write_confirmations = write_confirmations
-        self._blocks_to_read = blocks_to_read
-        self._pieces_to_send = pieces_to_send
-
-    # async def move_file_to_final_location(self):
-    #    self._file_wrapper.move_file_to_final_location()
-
-    async def run(self) -> None:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(self.piece_writing_loop)
-            nursery.start_soon(self.block_reading_loop)
-
-    async def piece_writing_loop(self) -> None:
-        while True:
-            msg = await self._pieces_to_write.receive()
-            if isinstance(msg, AllPiecesWritten):
-                self._file_wrapper.move_file_to_final_location()
-            else:
-                self._file_wrapper.write_piece(msg.index, msg.data)
-                logger.info(f"Wrote #{msg.index} to disk")
-                await self._write_confirmations.send(WriteConfirmation(index=msg.index))
-
-    async def block_reading_loop(self) -> None:
-        while True:
-            msg = await self._blocks_to_read.receive()
-            data = self._file_wrapper.read_block(
-                msg.block.piece_index, msg.block.block_start, msg.block.block_length
-            )
-            await self._pieces_to_send.send(
-                (
-                    msg.peer_id,
-                    Piece(
-                        piece_index=msg.block.piece_index,
-                        block_start=msg.block.block_start,
-                        data=data,
-                    ),
+async def file_manager_loop(
+    *,
+    file_wrapper: FileWrapper,
+    receive_from_engine: trio.MemoryReceiveChannel[
+        CompletePieceToWrite | AllPiecesWritten | BlockToRead
+    ],
+    send_to_engine: trio.MemorySendChannel[WriteConfirmation | tuple[PeerId, Piece]],
+) -> None:
+    while True:
+        msg = await receive_from_engine.receive()
+        match msg:
+            case AllPiecesWritten():
+                file_wrapper.move_file_to_final_location()
+            case CompletePieceToWrite(index=index, data=data):
+                file_wrapper.write_piece(index, data)
+                logger.info(f"Wrote #{index} to disk")
+                await send_to_engine.send(WriteConfirmation(index=index))
+            case BlockToRead(peer_id=peer_id, block=block):
+                data = file_wrapper.read_block(
+                    block.piece_index, block.block_start, block.block_length
                 )
-            )
+                await send_to_engine.send(
+                    (
+                        peer_id,
+                        Piece(
+                            piece_index=block.piece_index,
+                            block_start=block.block_start,
+                            data=data,
+                        ),
+                    )
+                )
