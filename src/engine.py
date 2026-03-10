@@ -215,7 +215,7 @@ class Engine(object):
             ]
             logger.info(f"Memory channels {[c.statistics() for c in channels]}")
             logger.info(f"Alive peers {self._peers.keys()}")
-            display.print_peers(self._torrent_info, self._torrent_state, self._peers)
+            display.print_peers(self._torrent_state, self._peers)
             await trio.sleep(1)
 
     async def tracker_loop(self) -> None:
