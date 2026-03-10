@@ -1,7 +1,6 @@
 from collections import OrderedDict
-from unittest.mock import MagicMock
 
-from bencode import parse_compact_peers, parse_peers
+from tracker import parse_compact_peers, parse_peers
 from shared_types import PeerAddress
 
 
@@ -24,8 +23,6 @@ def test_parse_compact_peers() -> None:
 
 
 def test_parse_peers() -> None:
-    torrent = MagicMock()
-    torrent.listening_port = 60000
     input = [
         OrderedDict(
             [(b"ip", b"127.0.0.1"), (b"peer id", b"CeDTEzzTR6pcjYKYAzLJ"), (b"port", 50000)]
@@ -42,4 +39,4 @@ def test_parse_peers() -> None:
         (PeerAddress(ip=b"127.0.0.1", port=50001), b"eQy4S9UbWLyKFBU99Il4"),
         (PeerAddress(ip=b"127.0.0.1", port=50002), b"4GX6PF3lK4PzfNzmiV8x"),
     ]
-    assert expected == parse_peers(input, torrent)
+    assert expected == parse_peers(input, listening_port=60000)

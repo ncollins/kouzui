@@ -234,8 +234,8 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             logger.info(f"tracker_info = {tracker_info}")
             try:
-                peer_ips_and_ports = bencode.parse_peers(
-                    tracker_info[b"peers"], self._torrent_state
+                peer_ips_and_ports = tracker.parse_peers(
+                    tracker_info[b"peers"], listening_port=self._torrent_state.listening_port
                 )
                 peers = [(address, peer_id) for address, peer_id in peer_ips_and_ports]
                 logger.info(f"Found peers from tracker: {peers}")
