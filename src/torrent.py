@@ -11,7 +11,6 @@ from shared_types import PeerId
 
 import bitarray
 
-from config import Config
 
 logger = logging.getLogger("torrent")
 
@@ -69,7 +68,6 @@ def _parse_pieces(bstring: bytes) -> list[bytes]:
 
 @dataclass(frozen=True, kw_only=True)
 class TorrentInfo:
-    listening_port: int
     file_path: Path
     info_hash: bytes
     interval: int
@@ -97,6 +95,7 @@ class TorrentState:
     uploaded: int = 0
     downloaded: int = 0
     left: int
+    listening_port: int
     peer_id: PeerId
     completed_pieces: bitarray.bitarray
 
@@ -105,10 +104,7 @@ def parse_torrent_dict(
     tdict: OrderedDict[bytes, Any],
     info_string: bytes,
     directory: Path,
-    listening_port: int | None = None,
     custom_name: str | None = None,
-    *,
-    cfg: Config,
 ) -> TorrentInfo:
     info_hash = hashlib.sha1(info_string).digest()
     piece_size = int(tdict[b"info"][b"piece length"])
@@ -142,10 +138,7 @@ def parse_torrent_dict(
         f"Tracker address: {tracker_address!r}, port: {tracker_port}, path: {tracker_path!r}"
     )
 
-    resolved_listening_port = listening_port if listening_port else cfg.default_listening_port
-
     return TorrentInfo(
-        listening_port=resolved_listening_port,
         file_path=file_path,
         info_hash=info_hash,
         interval=100,

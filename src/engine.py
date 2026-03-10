@@ -233,7 +233,9 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             logger.info(f"tracker_info = {tracker_info}")
             try:
-                peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._torrent_info)
+                peer_ips_and_ports = bencode.parse_peers(
+                    tracker_info[b"peers"], self._torrent_state
+                )
                 peers = [(address, peer_id) for address, peer_id in peer_ips_and_ports]
                 logger.info(f"Found peers from tracker: {peers}")
                 await self.update_peers(peers)
@@ -257,7 +259,7 @@ class Engine(object):
                 channel_to_engine=self._msg_from_peer[0],
                 cfg=self._cfg,
             ),
-            self._torrent_info.listening_port,
+            self._torrent_state.listening_port,
         )
 
     async def peer_clients_loop(self) -> None:
@@ -524,12 +526,15 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent_info: TorrentInfo, *, cfg: Config, auto_shutdown: bool) -> None:
+def run(
+    torrent_info: TorrentInfo, *, listening_port: int, cfg: Config, auto_shutdown: bool
+) -> None:
     try:
         completed_pieces = bitarray.bitarray(torrent_info.num_pieces)
         completed_pieces.setall(False)
         torrent_state = TorrentState(
             left=torrent_info.file_length,
+            listening_port=listening_port,
             peer_id=generate_peer_id(),
             completed_pieces=completed_pieces,
         )

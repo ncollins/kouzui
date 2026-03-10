@@ -59,9 +59,9 @@ def run(
     )
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
-    port = int(listening_port) if listening_port else None
-    t = parse_torrent_dict(torrent_data, torrent_info, download_dir, port, cfg=cfg)
-    engine.run(t, auto_shutdown=auto_shutdown, cfg=cfg)
+    port = listening_port if listening_port else cfg.default_listening_port
+    t = parse_torrent_dict(torrent_data, torrent_info, download_dir)
+    engine.run(t, listening_port=port, auto_shutdown=auto_shutdown, cfg=cfg)
 
 
 def make_test_files(
@@ -69,9 +69,8 @@ def make_test_files(
     torrent_info: bytes,
     download_dir: Path,
     number_of_files: int,
-    cfg: config.Config,
 ) -> None:
-    t = parse_torrent_dict(torrent_data, torrent_info, download_dir, None, cfg=cfg)
+    t = parse_torrent_dict(torrent_data, torrent_info, download_dir)
     files = []
     main_file_wrapper = file_manager.FileWrapper(torrent_info=t, file_suffix="")
     main_file_wrapper.create_file_or_return_hashes()
@@ -166,12 +165,11 @@ def make_test_files_command(
     ),
 ) -> None:
     """Split a complete file into incomplete files for testing"""
-    cfg = config.load_config(config_path)
     torrent_data, torrent_info = read_torrent_file(torrent_file)
     dl_dir = (
         download_dir if download_dir else Path.cwd()
     )  # os.path.dirname(os.path.abspath(__file__))
-    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files, cfg=cfg)
+    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files)
 
 
 @app.command("test-run")

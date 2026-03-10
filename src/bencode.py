@@ -144,7 +144,7 @@ def replace_ipv6_lookback_with_localhost(address: PeerAddress) -> PeerAddress:
 
 
 def parse_peers(
-    data: bytes | list[collections.OrderedDict[bytes, Any]], torrent_info: torrent.TorrentInfo
+    data: bytes | list[collections.OrderedDict[bytes, Any]], torrent_state: torrent.TorrentState
 ) -> list[tuple[PeerAddress, PeerId | None]]:
     peer_list: list[tuple[PeerAddress, PeerId | None]] = []
     match data:
@@ -157,5 +157,5 @@ def parse_peers(
     return [
         (replace_ipv6_lookback_with_localhost(address), peer_id)
         for address, peer_id in peer_list
-        if address.port != torrent_info.listening_port
+        if address.port != torrent_state.listening_port
     ]

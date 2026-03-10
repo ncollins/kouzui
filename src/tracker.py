@@ -28,7 +28,7 @@ def tracker_request(
         b"info_hash": parse.quote_from_bytes(torrent_info.info_hash).encode(),
         b"peer_id": torrent_state.peer_id,
         # ip
-        b"port": _int2bytes(torrent_info.listening_port),
+        b"port": _int2bytes(torrent_state.listening_port),
         b"uploaded": _int2bytes(torrent_state.uploaded),
         b"downloaded": _int2bytes(torrent_state.downloaded),
         b"left": _int2bytes(torrent_state.left),
