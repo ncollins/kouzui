@@ -5,6 +5,7 @@ import hashlib
 import io
 import logging
 import math
+from pathlib import Path
 import random
 from enum import StrEnum
 from typing import Any
@@ -20,7 +21,7 @@ import peer_connection
 import requests
 import peer_state
 from token_bucket import TokenBucket
-import torrent as state
+from torrent import TorrentInfo, TorrentState, generate_peer_id
 import tracker
 
 from config import Config
@@ -96,7 +97,8 @@ class Engine(object):
     def __init__(
         self,
         *,
-        torrent: state.Torrent,
+        torrent_info: TorrentInfo,
+        torrent_state: TorrentState,
         send_to_file_manager: trio.MemorySendChannel[
             CompletePieceToWrite | AllPiecesWritten | BlockToRead
         ],
@@ -108,7 +110,8 @@ class Engine(object):
     ) -> None:
         self._cfg = cfg
         self._auto_shutdown: bool = auto_shutdown
-        self._state: state.Torrent = torrent
+        self._torrent_info: TorrentInfo = torrent_info
+        self._torrent_state: TorrentState = torrent_state
         # interact with self
         self._peers_without_connection: tuple[
             trio.MemorySendChannel[PeerAddress],
@@ -168,12 +171,14 @@ class Engine(object):
         while True:
             complete_peers = [p.get_pieces().all for p in self._peers.values()]
             if (
-                self._auto_shutdown and all(complete_peers) and self._state._complete.all()
-            ):  # TODO remove private variable access
+                self._auto_shutdown
+                and all(complete_peers)
+                and self._torrent_state.completed_pieces.all()
+            ):
                 await self._send_to_file_manager.send(AllPiecesWritten())
                 await trio.sleep(1)
                 raise SystemExit(0)
-            elif self._state._complete.all():  # TODO remove private variable access
+            elif self._torrent_state.completed_pieces.all():
                 await self._send_to_file_manager.send(AllPiecesWritten())
             await trio.sleep(2)
 
@@ -183,13 +188,19 @@ class Engine(object):
             outstanding_requests = self.requests.size
             logger.info(f"stats = {self._stats}")
             logger.info(
-                f"{num_unwritten_blocks} unwritten blocks, {outstanding_requests} outstanding_requests, {sum(self._state._complete)}/{len(self._state._complete)} complete pieces"
+                f"{num_unwritten_blocks} unwritten blocks, {outstanding_requests} outstanding_requests, {sum(self._torrent_state.completed_pieces)}/{len(self._torrent_state.completed_pieces)} complete pieces"
             )
             # TODO 2026-03-01: Fixes were made to this if statement and logging, but as the
             # block is not triggered by the current integration tests it will need to be
             # verified at some point in the future.
-            if (sum(self._state._complete) / len(self._state._complete) > 0.97) or (
-                len(self._state._complete) - sum(self._state._complete) < 2
+            if (
+                sum(self._torrent_state.completed_pieces)
+                / len(self._torrent_state.completed_pieces)
+                > 0.97
+            ) or (
+                len(self._torrent_state.completed_pieces)
+                - sum(self._torrent_state.completed_pieces)
+                < 2
             ):
                 logger.info(f"Outstanding requests = {self.requests._requests}")
                 unwritten_blocks = [
@@ -204,7 +215,7 @@ class Engine(object):
             ]
             logger.info(f"Memory channels {[c.statistics() for c in channels]}")
             logger.info(f"Alive peers {self._peers.keys()}")
-            display.print_peers(self._state, self._peers)
+            display.print_peers(self._torrent_state, self._peers)
             await trio.sleep(1)
 
     async def tracker_loop(self) -> None:
@@ -213,7 +224,9 @@ class Engine(object):
             logger.debug("tracker_loop")
             start_time = trio.current_time()
             event = b"started" if new else None
-            raw_tracker_info = await tracker.query(self._state, event, cfg=self._cfg)
+            raw_tracker_info = await tracker.query(
+                self._torrent_info, self._torrent_state, event, cfg=self._cfg
+            )
             tracker_info = bencode.parse_value(io.BytesIO(raw_tracker_info))
             if not isinstance(tracker_info, collections.OrderedDict):
                 raise Exception(f"Invalid tracker info: {tracker_info!r}")
@@ -221,7 +234,9 @@ class Engine(object):
             # TODO we could recieve peers in a different format
             logger.info(f"tracker_info = {tracker_info}")
             try:
-                peer_ips_and_ports = bencode.parse_peers(tracker_info[b"peers"], self._state)
+                peer_ips_and_ports = tracker.parse_peers(
+                    tracker_info[b"peers"], listening_port=self._torrent_state.listening_port
+                )
                 peers = [(address, peer_id) for address, peer_id in peer_ips_and_ports]
                 logger.info(f"Found peers from tracker: {peers}")
                 await self.update_peers(peers)
@@ -229,23 +244,23 @@ class Engine(object):
                 logger.error(f"Error passing peers: {e}")
 
             # update other info:
-            # self._state.complete_peers = tracker_info['complete']
-            # self._state.incomplete_peers = tracker_info['incomplete']
-            # self._state.interval = int(tracker_info['interval'])
+            # self._torrent_state.completed_pieces_peers = tracker_info['complete']
+            # self._torrent_info.incomplete_peers = tracker_info['incomplete']
+            # self._torrent_info.interval = int(tracker_info['interval'])
             # tell tracker the new interval
-            await trio.sleep_until(start_time + self._state.interval)
+            await trio.sleep_until(start_time + self._torrent_info.interval)
             new = False
 
     async def peer_server_loop(self) -> None:
         await trio.serve_tcp(
             peer_connection.make_handler(
-                info_hash=self._state.info_hash,
-                self_peer_id=self._state.peer_id,
+                info_hash=self._torrent_info.info_hash,
+                self_peer_id=self._torrent_state.peer_id,
                 token_bucket=self.token_bucket,
                 channel_to_engine=self._msg_from_peer[0],
                 cfg=self._cfg,
             ),
-            self._state.listening_port,
+            self._torrent_state.listening_port,
         )
 
     async def peer_clients_loop(self) -> None:
@@ -259,8 +274,8 @@ class Engine(object):
                 address = await self._peers_without_connection[1].receive()
                 make_standalone = functools.partial(
                     peer_connection.make_standalone,
-                    info_hash=self._state.info_hash,
-                    self_peer_id=self._state.peer_id,
+                    info_hash=self._torrent_info.info_hash,
+                    self_peer_id=self._torrent_state.peer_id,
                     token_bucket=self.token_bucket,
                     channel_to_engine=self._msg_from_peer[0],
                     peer_address=address,
@@ -277,7 +292,7 @@ class Engine(object):
                 await self._peers_without_connection[0].send(address)
 
     def _blocks_from_index(self, index: int) -> set[Block]:
-        piece_length = self._state.piece_length(index)
+        piece_length = self._torrent_info.piece_length(index)
         block_length = min(piece_length, self._cfg.block_size)
         begin_indexes = list(range(0, piece_length, block_length))
         return set(
@@ -292,7 +307,7 @@ class Engine(object):
     async def update_peer_requests(self) -> None:
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
-        if self._state._complete.all():
+        if self._torrent_state.completed_pieces.all():
             logger.info("Not making new requests, download is complete")
             return
         if not self._peers:
@@ -302,11 +317,11 @@ class Engine(object):
             if peer.is_client_choked:
                 continue
             # TODO don't read private field of another object
-            targets = (~self._state._complete) & peer._pieces
+            targets = (~self._torrent_state.completed_pieces) & peer._pieces
             target_index = _pick_random_one_in_bitarray(targets)
             if target_index is not None:
                 logger.info(
-                    f"{address!r}: self any? {self._state._complete.any()}, peer any? {peer._pieces.any()}, target_index = {target_index}"
+                    f"{address!r}: self any? {self._torrent_state.completed_pieces.any()}, peer any? {peer._pieces.any()}, target_index = {target_index}"
                 )
                 existing_requests = self.requests.existing_requests_for_peer(address)
                 if len(existing_requests) > self._cfg.max_outstanding_requests_per_peer:
@@ -339,8 +354,10 @@ class Engine(object):
             case PeerHandshakeSuccess(peer_channel=peer_channel):
                 # Send the Bitfield before adding the peer_id, peer_state to the dictionary
                 # to ensure that it gets sent before any other messages
-                await peer_channel.send(Bitfield(pieces=self._state._complete))
-                peer_state = PeerState(peer_id, self._state._num_pieces, send_channel=peer_channel)
+                await peer_channel.send(Bitfield(pieces=self._torrent_state.completed_pieces))
+                peer_state = PeerState(
+                    peer_id, self._torrent_info.num_pieces, send_channel=peer_channel
+                )
                 self._peers[peer_id] = peer_state
             case PeerConnectionShutdown() | PeerConnectionError():
                 logging.info(
@@ -376,7 +393,7 @@ class Engine(object):
                 self._inc_stats(StatField.REQUESTS_IN)
                 if peer_state.is_peer_choked:
                     logger.warning(f"{peer_state.peer_id!r} requested {block} but peer is choked")
-                elif self._state._complete[block.piece_index]:
+                elif self._torrent_state.completed_pieces[block.piece_index]:
                     await self._send_to_file_manager.send(
                         BlockToRead(peer_id=peer_state.peer_id, block=block)
                     )
@@ -395,7 +412,7 @@ class Engine(object):
 
     async def handle_block_received(self, index: int, begin: int, data: bytes) -> None:
         if index not in self._received_blocks:
-            piece_length = self._state.piece_length(index)
+            piece_length = self._torrent_info.piece_length(index)
             completed_blocks = bitarray.bitarray(math.ceil(piece_length / self._cfg.block_size))
             completed_blocks.setall(False)
             piece_data = bytearray(piece_length)
@@ -407,7 +424,7 @@ class Engine(object):
         completed_blocks[block_index] = True
         piece_data[begin : begin + len(data)] = data
         if completed_blocks.all():
-            piece_info = self._state.piece_info(index)
+            piece_info = self._torrent_info.piece_info(index)
             complete_piece = bytes(piece_data)
             if hashlib.sha1(complete_piece).digest() == piece_info.sha1hash:
                 self._received_blocks.pop(index)  # TODO is this ordering significant?
@@ -448,7 +465,7 @@ class Engine(object):
                 self.requests.delete_all_for_piece(msg.index)
                 # NB - update the _complete vector first to guarantee that new clients get
                 # the most upto date bitfield (they may also get a redundant HAVE message)
-                self._state._complete[msg.index] = True  # TODO remove private property access
+                self._torrent_state.completed_pieces[msg.index] = True
                 await self.announce_have_piece(msg.index)
                 await self.update_peer_requests()
             else:
@@ -508,17 +525,36 @@ class Engine(object):
             logging.info(f"Deleted {count} stale requests (older than {seconds} seconds)")
 
 
-def run(torrent: state.Torrent, *, cfg: Config, auto_shutdown: bool) -> None:
+def run(
+    torrent_info: TorrentInfo,
+    *,
+    directory: Path,
+    listening_port: int,
+    cfg: Config,
+    auto_shutdown: bool,
+) -> None:
     try:
+        completed_pieces = bitarray.bitarray(torrent_info.num_pieces)
+        completed_pieces.setall(False)
+        torrent_state = TorrentState(
+            left=torrent_info.file_length,
+            file_path=directory / torrent_info.torrent_name,
+            listening_port=listening_port,
+            peer_id=generate_peer_id(),
+            completed_pieces=completed_pieces,
+        )
+
         # create FileManager and check hashes if file already exists
-        file_wrapper = file_manager.FileWrapper(torrent=torrent)
+        file_wrapper = file_manager.FileWrapper(
+            torrent_info=torrent_info, file_path=torrent_state.file_path
+        )
         existing_hashes = file_wrapper.create_file_or_return_hashes()
 
         if existing_hashes:
             for index, h in enumerate(existing_hashes):
-                piece_info = torrent.piece_info(index)
+                piece_info = torrent_info.piece_info(index)
                 if piece_info.sha1hash == h:
-                    torrent._complete[index] = True  # TODO remove private property access
+                    torrent_state.completed_pieces[index] = True
 
         s_to_file_manager, r_from_engine = trio.open_memory_channel[
             CompletePieceToWrite | AllPiecesWritten | BlockToRead
@@ -528,7 +564,8 @@ def run(torrent: state.Torrent, *, cfg: Config, auto_shutdown: bool) -> None:
         ](cfg.internal_queue_size)
 
         eng = Engine(
-            torrent=torrent,
+            torrent_info=torrent_info,
+            torrent_state=torrent_state,
             send_to_file_manager=s_to_file_manager,
             receive_from_file_manager=r_from_file_manager,
             cfg=cfg,

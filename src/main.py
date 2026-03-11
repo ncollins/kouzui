@@ -14,26 +14,18 @@ import bencode
 import config
 import engine
 import file_manager
-from torrent import Torrent
+from torrent import parse_torrent_dict
 
 logger = logging.getLogger("main")
 
 app = typer.Typer()
 
 
-def read_torrent_file(torrent_file: Path) -> tuple[OrderedDict[bytes, Any], bytes]:
+def _read_torrent_file(torrent_file: Path) -> bencode.BencodeDict:
     with torrent_file.open("rb") as f:
-        torrent_data: OrderedDict[bytes, Any] = cast(
-            OrderedDict[bytes, Any], bencode.parse_value(f)
-        )
+        torrent_data: bencode.BencodeDict = cast(bencode.BencodeDict, bencode.parse_value(f))
         logger.debug(f"torrent_data = {torrent_data}")
-    torrent_info = bencode.encode_value(torrent_data[b"info"])
-    logger.debug(f"torrent info = {torrent_info!r}")
-    # if True:
-    #    with open(args.torrent_path, 'rb') as f:
-    #        raw = f.read()
-    #        logger.debug("info_string matches {}".format(torrent_info in raw))
-    return (torrent_data, torrent_info)
+    return torrent_data
 
 
 def run(
@@ -57,29 +49,30 @@ def run(
         level=log_level,
         format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d `%(funcName)s` -- %(message)s",
     )
-    torrent_data, torrent_info = read_torrent_file(torrent_file)
+    torrent_data = _read_torrent_file(torrent_file)
     download_dir = download_dir if download_dir else Path.cwd()
-    port = int(listening_port) if listening_port else None
-    t = Torrent(torrent_data, torrent_info, download_dir, port, cfg=cfg)
-    engine.run(t, auto_shutdown=auto_shutdown, cfg=cfg)
+    port = listening_port if listening_port else cfg.default_listening_port
+    t = parse_torrent_dict(torrent_data)
+    engine.run(t, directory=download_dir, listening_port=port, auto_shutdown=auto_shutdown, cfg=cfg)
 
 
 def make_test_files(
     torrent_data: OrderedDict[bytes, Any],
-    torrent_info: bytes,
     download_dir: Path,
     number_of_files: int,
-    cfg: config.Config,
 ) -> None:
-    t = Torrent(torrent_data, torrent_info, download_dir, None, cfg=cfg)
+    t = parse_torrent_dict(torrent_data)
+    base_path = download_dir / t.torrent_name
     files = []
-    main_file_wrapper = file_manager.FileWrapper(torrent=t, file_suffix="")
+    main_file_wrapper = file_manager.FileWrapper(
+        torrent_info=t, file_path=base_path, file_suffix=""
+    )
     main_file_wrapper.create_file_or_return_hashes()
     for i in range(number_of_files):
-        fw = file_manager.FileWrapper(torrent=t, file_suffix=f".{i}")
+        fw = file_manager.FileWrapper(torrent_info=t, file_path=base_path, file_suffix=f".{i}")
         fw.create_file_or_return_hashes()
         files.append(fw)
-    for p in t._pieces:
+    for p in t.pieces:
         data = main_file_wrapper.read_block(p.index, 0, t.piece_length(p.index))
         if p.sha1hash == hashlib.sha1(data).digest():
             random.choice(files).write_piece(p.index, data)
@@ -88,15 +81,13 @@ def make_test_files(
 def test(test_dir: Path, torrent_file: Path, number_of_clients: int, *, cfg: config.Config) -> None:
     # TODO separate timing of file copy and torrenting
     start_time = time.perf_counter()
-    torrent_data, _torrent_info = read_torrent_file(torrent_file)
+    torrent_data = _read_torrent_file(torrent_file)
+    torrent_name = parse_torrent_dict(torrent_data).torrent_name
     # ----- RUN CLIENTS ----------------
     client_processes: list[tuple[mp.Process, Path, Path]] = []
     for i in range(number_of_clients):
         client_dir = test_dir / "clients" / f"client-{i}"
         client_dir.mkdir(exist_ok=True, parents=True)
-
-        # TODO tidy up potential torrent_name, custom_name issues
-        torrent_name = bytes.decode(torrent_data[b"info"][b"name"])
         test_file = test_dir / f"{torrent_name}.{i}.part"
         tmp_file = client_dir / f"{torrent_name}.part"
         final_file = client_dir / torrent_name
@@ -155,7 +146,6 @@ def run_command(
 @app.command("make-test-files")
 def make_test_files_command(
     torrent_file: Path = typer.Argument(help="path to the .torrent file"),
-    config_path: Optional[Path] = typer.Option(None, "--config", help="path to config file (TOML)"),
     number_of_files: int = typer.Option(
         None, "--number-of-files", help="number of files to create"
     ),
@@ -166,12 +156,11 @@ def make_test_files_command(
     ),
 ) -> None:
     """Split a complete file into incomplete files for testing"""
-    cfg = config.load_config(config_path)
-    torrent_data, torrent_info = read_torrent_file(torrent_file)
+    torrent_data = _read_torrent_file(torrent_file)
     dl_dir = (
         download_dir if download_dir else Path.cwd()
     )  # os.path.dirname(os.path.abspath(__file__))
-    make_test_files(torrent_data, torrent_info, dl_dir, number_of_files, cfg=cfg)
+    make_test_files(torrent_data, dl_dir, number_of_files)
 
 
 @app.command("test-run")
