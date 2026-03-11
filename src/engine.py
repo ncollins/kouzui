@@ -174,11 +174,11 @@ class Engine(object):
                 self._auto_shutdown
                 and all(complete_peers)
                 and self._torrent_state.completed_pieces.all()
-            ):  # TODO remove private variable access
+            ):
                 await self._send_to_file_manager.send(AllPiecesWritten())
                 await trio.sleep(1)
                 raise SystemExit(0)
-            elif self._torrent_state.completed_pieces.all():  # TODO remove private variable access
+            elif self._torrent_state.completed_pieces.all():
                 await self._send_to_file_manager.send(AllPiecesWritten())
             await trio.sleep(2)
 
@@ -465,9 +465,7 @@ class Engine(object):
                 self.requests.delete_all_for_piece(msg.index)
                 # NB - update the _complete vector first to guarantee that new clients get
                 # the most upto date bitfield (they may also get a redundant HAVE message)
-                self._torrent_state.completed_pieces[msg.index] = (
-                    True  # TODO remove private property access
-                )
+                self._torrent_state.completed_pieces[msg.index] = True
                 await self.announce_have_piece(msg.index)
                 await self.update_peer_requests()
             else:
