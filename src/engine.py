@@ -465,8 +465,8 @@ def run(
         completed_pieces = bitarray.bitarray(torrent_info.num_pieces)
         completed_pieces.setall(False)
         torrent_state = TorrentState(
-            left=torrent_info.file_length,
-            file_path=directory / torrent_info.torrent_name,
+            left=torrent_info.total_length,
+            download_path=directory / torrent_info.torrent_name,
             listening_port=listening_port,
             peer_id=generate_peer_id(),
             completed_pieces=completed_pieces,
@@ -474,7 +474,7 @@ def run(
 
         # create FileManager and check hashes if file already exists
         file_wrapper = file_manager.FileWrapper(
-            torrent_info=torrent_info, file_path=torrent_state.file_path
+            torrent_info=torrent_info, file_path=torrent_state.download_path
         )
         existing_hashes = file_wrapper.create_file_or_return_hashes()
 

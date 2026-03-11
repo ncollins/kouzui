@@ -1,9 +1,11 @@
 import hashlib
 import logging
+from collections import OrderedDict
 from pathlib import Path
 import random
 import re
 from dataclasses import dataclass
+from functools import cached_property
 from typing import NamedTuple, cast
 
 import bitarray
@@ -33,6 +35,13 @@ logger = logging.getLogger("torrent")
 
 
 PieceInfo = NamedTuple("PieceInfo", [("index", int), ("sha1hash", bytes)])
+
+
+@dataclass(frozen=True, kw_only=True)
+class FileDetails:
+    name: bytes
+    subpath: Path
+    length: int
 
 
 def _random_char() -> str:
@@ -75,16 +84,20 @@ class TorrentInfo:
     tracker_port: int
     tracker_path: bytes
     pieces: list[PieceInfo]
-    file_length: int
+    files: OrderedDict[bytes, FileDetails]
     num_pieces: int
     piece_size: int
+
+    @cached_property
+    def total_length(self) -> int:
+        return sum(f.length for f in self.files.values())
 
     def piece_length(self, index: int) -> int:
         last_piece = self.num_pieces - 1
         if index < last_piece:
             return self.piece_size
         else:
-            return min(self.piece_size, self.file_length - self.piece_size * last_piece)
+            return min(self.piece_size, self.total_length - self.piece_size * last_piece)
 
     def piece_info(self, n: int) -> PieceInfo:
         return self.pieces[n]
@@ -95,7 +108,7 @@ class TorrentState:
     uploaded: int = 0
     downloaded: int = 0
     left: int
-    file_path: Path
+    download_path: Path
     listening_port: int
     peer_id: PeerId
     completed_pieces: bitarray.bitarray
@@ -118,7 +131,14 @@ def parse_torrent_dict(
 
     pieces = [PieceInfo(i, sha1) for i, sha1 in enumerate(_parse_pieces(info_dict[b"pieces"]))]
 
+    torrent_name_bytes: bytes = info_dict[b"name"]
     file_length = int(info_dict[b"length"])
+    files: OrderedDict[bytes, FileDetails] = OrderedDict()
+    files[torrent_name_bytes] = FileDetails(
+        name=torrent_name_bytes,
+        subpath=Path("."),
+        length=file_length,
+    )
     num_pieces = len(pieces)
 
     raw_tracker_url = tdict[b"announce"]
@@ -141,7 +161,7 @@ def parse_torrent_dict(
         tracker_port=tracker_port,
         tracker_path=tracker_path,
         pieces=pieces,
-        file_length=file_length,
+        files=files,
         num_pieces=num_pieces,
         piece_size=piece_size,
     )
