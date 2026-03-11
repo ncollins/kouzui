@@ -47,43 +47,9 @@ from peer_messages import (
     PeerConnectionError,
 )
 from peer_state import PeerState
-from shared_types import Block, PeerAddress, PeerId
+from shared_types import PeerAddress, PeerId
 
 logger = logging.getLogger("engine")
-
-
-def _pick_random_one_in_bitarray(b: bitarray.bitarray) -> int | None:
-    """
-    For a bitarary, b, this picks a random index, i, such that
-    b[i] == 1.
-
-    It does this by picking a random starting index and searching forwards
-    until it finds an entry equal to 1. If that fails then it searches
-    backwards from the starting index.
-
-    Returns None if it can't find an element equal to 1.
-
-    >>> _pick_random_one_in_bitarray(bitarray.bitarray([1,0,0,0]))
-    0
-    >>> _pick_random_one_in_bitarray(bitarray.bitarray([0,0,0,1]))
-    3
-    >>> _pick_random_one_in_bitarray(bitarray.bitarray([0,0,0,0])) is None
-    True
-    """
-    n = len(b)
-    start = random.randint(0, n - 1)
-    # look at tail
-    try:
-        i = b.index(True, start)
-        return i
-    except ValueError:
-        pass
-    # look at head
-    try:
-        i = b.index(True, 0, start)
-        return i
-    except ValueError:
-        return None
 
 
 class StatField(StrEnum):
@@ -133,7 +99,7 @@ class Engine(object):
         self._peers: dict[PeerId, peer_state.PeerState] = dict()
         # data received but not written to disk
         self._received_blocks: dict[int, tuple[bitarray.bitarray, bytearray]] = dict()
-        self.requests = requests.RequestManager()
+        self.requests = requests.RequestManager(torrent_info=self._torrent_info, cfg=self._cfg)
         self._stats: dict[StatField, int] = {f: 0 for f in StatField}
 
         if self._cfg.max_outgoing_bytes_per_second is None:
@@ -291,58 +257,20 @@ class Engine(object):
                 logger.info(f"Adding new peer to queue: {address!r} / {peer_id!r}")
                 await self._peers_without_connection[0].send(address)
 
-    def _blocks_from_index(self, index: int) -> set[Block]:
-        piece_length = self._torrent_info.piece_length(index)
-        block_length = min(piece_length, self._cfg.block_size)
-        begin_indexes = list(range(0, piece_length, block_length))
-        return set(
-            Block(
-                piece_index=index,
-                block_start=begin,
-                block_length=min(block_length, piece_length - begin),
-            )
-            for begin in begin_indexes
-        )
-
     async def update_peer_requests(self) -> None:
         # Look at what the client has, what the peers have
         # and update the requested pieces for each peer.
         if self._torrent_state.completed_pieces.all():
             logger.info("Not making new requests, download is complete")
-            return
-        if not self._peers:
+        elif not self._peers:
             logger.info("Not making new requests as there are no peers")
-            return
-        for address, peer in self._peers.items():
-            if peer.is_client_choked:
-                continue
-            # TODO don't read private field of another object
-            targets = (~self._torrent_state.completed_pieces) & peer._pieces
-            target_index = _pick_random_one_in_bitarray(targets)
-            if target_index is not None:
-                logger.info(
-                    f"{address!r}: self any? {self._torrent_state.completed_pieces.any()}, peer any? {peer._pieces.any()}, target_index = {target_index}"
-                )
-                existing_requests = self.requests.existing_requests_for_peer(address)
-                if len(existing_requests) > self._cfg.max_outstanding_requests_per_peer:
-                    logger.info(
-                        f"{address!r}: Not making new requests: {len(existing_requests)} existing"
-                    )
-                    new_requests: set[Block] = set()
-                else:
-                    suggested_requests = self._blocks_from_index(target_index)
-                    new_requests = suggested_requests.difference(existing_requests)
-                    logger.info(
-                        f"{address!r}: {len(suggested_requests)} suggested requests, {len(existing_requests)} existing"
-                    )
-                logger.info(f"{address!r}: new_requests = <length={len(new_requests)}>")
-                if new_requests:
-                    for block in new_requests:
-                        self.requests.add_request(address, block)
-                        self._inc_stats(StatField.REQUESTS_OUT)
-                        await peer.send_channel.send(Request(block=block))
-            else:
-                logger.info(f"No target pieces for {address!r}")
+        else:
+            for peer_id, block in self.requests.update_peer_requests(
+                completed_pieces=self._torrent_state.completed_pieces,
+                peers=list(self._peers.items()),
+            ):
+                self._inc_stats(StatField.REQUESTS_OUT)
+                await self._peers[peer_id].send_channel.send(Request(block=block))
 
     async def handle_peer_connection_status(
         self, peer_id: PeerId, connection_status: PeerConnectionStatus
