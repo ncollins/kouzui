@@ -3,13 +3,13 @@ import logging
 from pathlib import Path
 import random
 import re
-from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, NamedTuple
-
-from shared_types import PeerId
+from typing import NamedTuple, cast
 
 import bitarray
+
+import bencode
+from shared_types import PeerId
 
 
 logger = logging.getLogger("torrent")
@@ -102,20 +102,23 @@ class TorrentState:
 
 
 def parse_torrent_dict(
-    tdict: OrderedDict[bytes, Any],
-    info_string: bytes,
+    tdict: bencode.BencodeDict,
 ) -> TorrentInfo:
+    # we need to re-encode the info dictionary to get the sha1 hash
+    info_dict = cast(bencode.BencodeDict, tdict[b"info"])
+    info_string = bencode.encode_value(info_dict)
+    logger.debug(f"info_string = {info_string!r}")
     info_hash = hashlib.sha1(info_string).digest()
-    piece_size = int(tdict[b"info"][b"piece length"])
+    piece_size = int(info_dict[b"piece length"])
 
-    if b"files" in tdict[b"info"]:  # multi-file case
+    if b"files" in info_dict:  # multi-file case
         raise Exception("multi-file torrents not yet supported")
 
-    torrent_name = bytes.decode(tdict[b"info"][b"name"])
+    torrent_name = bytes.decode(info_dict[b"name"])
 
-    pieces = [PieceInfo(i, sha1) for i, sha1 in enumerate(_parse_pieces(tdict[b"info"][b"pieces"]))]
+    pieces = [PieceInfo(i, sha1) for i, sha1 in enumerate(_parse_pieces(info_dict[b"pieces"]))]
 
-    file_length = int(tdict[b"info"][b"length"])
+    file_length = int(info_dict[b"length"])
     num_pieces = len(pieces)
 
     raw_tracker_url = tdict[b"announce"]
