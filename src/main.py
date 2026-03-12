@@ -175,6 +175,25 @@ def test_run_command(
     test(test_dir, torrent_path, number_of_clients, cfg=cfg)
 
 
+@app.command("parse-torrent-file")
+def parse_torrent_file_command(
+    torrent_file: Path = typer.Argument(help="path to the .torrent file"),
+) -> None:
+    """Parse a .torrent file and print the results"""
+    torrent_data = _read_torrent_file(torrent_file)
+    t = parse_torrent_dict(torrent_data)
+    print(f"torrent_name: {t.torrent_name}")
+    print(f"info_hash: {t.info_hash}")
+    print(f"interval: {t.interval}")
+    print(f"tracker_address: {t.tracker_address}")
+    print(f"tracker_port: {t.tracker_port}")
+    print(f"tracker_path: {t.tracker_path}")
+    print(f"pieces: [{t.pieces[0]}, ..., {t.pieces[-1]}]")
+    print(f"files: {t.files}")
+    print(f"num_pieces: {t.num_pieces}")
+    print(f"piece_size: {t.piece_size}")
+
+
 @app.command("validate-config")
 def validate_config_command(
     config_path: Path = typer.Option(..., "--config", help="path to config file (TOML)"),
