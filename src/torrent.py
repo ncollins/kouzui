@@ -131,7 +131,7 @@ def parse_torrent_dict(
     if b"length" in info_dict:
         files = [
             FileDetails(
-                path=Path("."),
+                path=Path(torrent_name),
                 starting_index=0,
                 length=int(info_dict[b"length"]),
             )
