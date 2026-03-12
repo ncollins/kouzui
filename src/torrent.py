@@ -1,6 +1,5 @@
 import hashlib
 import logging
-from collections import OrderedDict
 from pathlib import Path
 import random
 import re
@@ -39,8 +38,8 @@ PieceInfo = NamedTuple("PieceInfo", [("index", int), ("sha1hash", bytes)])
 
 @dataclass(frozen=True, kw_only=True)
 class FileDetails:
-    name: bytes
-    subpath: Path
+    path: Path
+    starting_index: int
     length: int
 
 
@@ -84,13 +83,13 @@ class TorrentInfo:
     tracker_port: int
     tracker_path: bytes
     pieces: list[PieceInfo]
-    files: OrderedDict[bytes, FileDetails]
+    files: list[FileDetails]
     num_pieces: int
     piece_size: int
 
     @cached_property
     def total_length(self) -> int:
-        return sum(f.length for f in self.files.values())
+        return sum(f.length for f in self.files)
 
     def piece_length(self, index: int) -> int:
         last_piece = self.num_pieces - 1
@@ -124,21 +123,34 @@ def parse_torrent_dict(
     info_hash = hashlib.sha1(info_string).digest()
     piece_size = int(info_dict[b"piece length"])
 
-    if b"files" in info_dict:  # multi-file case
-        raise Exception("multi-file torrents not yet supported")
-
     torrent_name = bytes.decode(info_dict[b"name"])
 
     pieces = [PieceInfo(i, sha1) for i, sha1 in enumerate(_parse_pieces(info_dict[b"pieces"]))]
 
-    torrent_name_bytes: bytes = info_dict[b"name"]
-    file_length = int(info_dict[b"length"])
-    files: OrderedDict[bytes, FileDetails] = OrderedDict()
-    files[torrent_name_bytes] = FileDetails(
-        name=torrent_name_bytes,
-        subpath=Path("."),
-        length=file_length,
-    )
+    files: list[FileDetails]
+    if b"length" in info_dict:
+        files = [
+            FileDetails(
+                path=Path("."),
+                starting_index=0,
+                length=int(info_dict[b"length"]),
+            )
+        ]
+    else:
+        files = []
+        running_total = 0
+        for file_dict in info_dict[b"files"]:
+            path_parts = [torrent_name] + [p.decode() for p in file_dict[b"path"]]
+            file_path = Path(*path_parts)
+            file_length = int(file_dict[b"length"])
+            files.append(
+                FileDetails(
+                    path=file_path,
+                    starting_index=running_total,
+                    length=file_length,
+                )
+            )
+            running_total += file_length
     num_pieces = len(pieces)
 
     raw_tracker_url = tdict[b"announce"]
